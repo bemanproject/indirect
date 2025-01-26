@@ -6,7 +6,7 @@ cmake_policy(SET CMP0135 NEW)
 
 project(
     beman.indirect # CMake Project Name, which is also the name of the top-level
-    DESCRIPTION "A Beman library exemplar"
+    DESCRIPTION "Beman implementation of indirect and polymorphic (P3019)"
     LANGUAGES CXX
     # VERSION ${XYZ_VALUE_TYPES_VERSION} # TODO(lboehm): version??
 )
