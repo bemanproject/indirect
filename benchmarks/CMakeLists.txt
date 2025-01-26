@@ -1,7 +1,7 @@
 add_executable(indirect_benchmark "")
 target_sources(indirect_benchmark
     PRIVATE
-        indirect_benchmark.cc
+        indirect_benchmark.cpp
 )
 target_link_libraries(indirect_benchmark
     PRIVATE
@@ -13,7 +13,7 @@ target_link_libraries(indirect_benchmark
 add_executable(polymorphic_benchmark "")
 target_sources(polymorphic_benchmark
     PRIVATE
-        polymorphic_benchmark.cc
+        polymorphic_benchmark.cpp
 )
 target_link_libraries(polymorphic_benchmark
     PRIVATE

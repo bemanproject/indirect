@@ -1,4 +1,4 @@
-#include "polymorphic.h"
+#include "polymorphic.hpp"
 
 namespace xyz::testing {
 class ClassWithPolymorphicPimpl {

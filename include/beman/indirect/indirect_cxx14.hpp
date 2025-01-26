@@ -27,7 +27,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <type_traits>
 #include <utility>
 
-#include "feature_check.h"
+#include "feature_check.hpp"
 
 namespace xyz {
 #ifndef XYZ_IN_PLACE_DEFINED

@@ -39,7 +39,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif  // XYZ_POLYMORPHIC_USES_EXPERIMENTAL_SMALL_BUFFER_OPTIMIZATION
 
 #ifndef XYZ_POLYMORPHIC_H_
-#include "polymorphic.h"
+#include "beman/indirect/polymorphic.hpp"
 #endif  // XYZ_POLYMORPHIC_H_
 
 namespace {

@@ -19,11 +19,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ==============================================================================*/
 
 #ifdef XYZ_POLYMORPHIC_CXX_14
-#include "polymorphic_cxx14.h"
+#include "beman/indirect/polymorphic_cxx14.hpp"
 #endif  // XYZ_POLYMORPHIC_CXX_14
 
 #ifndef XYZ_POLYMORPHIC_H_
-#include "beman/indirect/polymorphic.h"
+#include "beman/indirect/polymorphic.hpp"
 #endif  // XYZ_POLYMORPHIC_H_
 
 #include <gtest/gtest.h>
@@ -32,10 +32,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <map>
 #include <utility>
 
-#include "beman/indirect/feature_check.h"
-#include "beman/indirect/tagged_allocator.h"
-#include "beman/indirect/test_helpers.h"
-#include "beman/indirect/tracking_allocator.h"
+#include "beman/indirect/feature_check.hpp"
+#include "beman/indirect/tagged_allocator.hpp"
+#include "beman/indirect/test_helpers.hpp"
+#include "beman/indirect/tracking_allocator.hpp"
 #if defined(XYZ_HAS_STD_IN_PLACE_TYPE_T) && !defined(XYZ_POLYMORPHIC_CXX_14)
 namespace xyz {
 using std::in_place_type_t;

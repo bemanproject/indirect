@@ -1,4 +1,4 @@
-#include "indirect_pimpl.h"
+#include "indirect_pimpl.hpp"
 
 namespace xyz::testing {
 void check_methods() {

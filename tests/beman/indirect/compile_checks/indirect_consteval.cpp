@@ -21,7 +21,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // A set of consteval functions to check that constexpr functions can be
 // evaluated at compile time.
 
-#include "indirect.h"
+#include "indirect.hpp"
 
 namespace xyz::testing {
 struct ConstexprHashable {};

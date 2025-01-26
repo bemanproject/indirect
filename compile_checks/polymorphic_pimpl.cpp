@@ -1,4 +1,4 @@
-#include "polymorphic_pimpl.h"
+#include "polymorphic_pimpl.hpp"
 
 namespace xyz::testing {
 

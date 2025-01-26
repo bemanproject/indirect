@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 cc_binary(
     name = "indirect_benchmark",
     srcs = [
-        "indirect_benchmark.cc",
+        "indirect_benchmark.cpp",
     ],
     deps = [
         "//:indirect",
@@ -19,7 +19,7 @@ build_test(
 cc_binary(
     name = "polymorphic_benchmark",
     srcs = [
-        "polymorphic_benchmark.cc",
+        "polymorphic_benchmark.cpp",
     ],
     deps = [
         "//:polymorphic",

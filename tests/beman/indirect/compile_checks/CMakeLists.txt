@@ -1,7 +1,7 @@
 add_library(indirect_consteval OBJECT)
 target_sources(indirect_consteval
     PRIVATE
-        indirect_consteval.cc
+        indirect_consteval.cpp
 )
 target_link_libraries(indirect_consteval
     PRIVATE
@@ -12,9 +12,9 @@ target_link_libraries(indirect_consteval
 add_library(indirect_pimpl OBJECT)
 target_sources(indirect_pimpl
     PRIVATE
-        indirect_pimpl.h
-        indirect_pimpl.cc
-        indirect_pimpl_use.cc
+        indirect_pimpl.hpp
+        indirect_pimpl.cpp
+        indirect_pimpl_use.cpp
 )
 target_link_libraries(indirect_pimpl
     PRIVATE
@@ -25,7 +25,7 @@ target_link_libraries(indirect_pimpl
 add_library(polymorphic_consteval OBJECT)
 target_sources(polymorphic_consteval
     PRIVATE
-        polymorphic_consteval.cc
+        polymorphic_consteval.cpp
 )
 target_link_libraries(polymorphic_consteval
     PRIVATE
@@ -36,9 +36,9 @@ target_link_libraries(polymorphic_consteval
 add_library(polymorphic_pimpl OBJECT)
 target_sources(polymorphic_pimpl
     PRIVATE
-        polymorphic_pimpl.h
-        polymorphic_pimpl.cc
-        polymorphic_pimpl_use.cc
+        polymorphic_pimpl.hpp
+        polymorphic_pimpl.cpp
+        polymorphic_pimpl_use.cpp
 )
 target_link_libraries(polymorphic_pimpl
     PRIVATE
@@ -49,7 +49,7 @@ target_link_libraries(polymorphic_pimpl
 add_library(indirect_as_member OBJECT)
 target_sources(indirect_as_member
     PRIVATE
-        indirect_as_member.cc
+        indirect_as_member.cpp
 )
 target_link_libraries(indirect_as_member
     PRIVATE
@@ -60,7 +60,7 @@ target_link_libraries(indirect_as_member
 add_library(indirect_in_variant OBJECT)
 target_sources(indirect_in_variant
     PRIVATE
-        indirect_in_variant.cc
+        indirect_in_variant.cpp
 )
 target_link_libraries(indirect_in_variant
     PRIVATE
@@ -71,7 +71,7 @@ target_link_libraries(indirect_in_variant
 add_library(polymorphic_as_member OBJECT)
 target_sources(polymorphic_as_member
     PRIVATE
-        polymorphic_as_member.cc
+        polymorphic_as_member.cpp
 )
 target_link_libraries(polymorphic_as_member
     PRIVATE
@@ -82,7 +82,7 @@ target_link_libraries(polymorphic_as_member
 add_library(polymorphic_in_variant OBJECT)
 target_sources(polymorphic_in_variant
     PRIVATE
-        polymorphic_in_variant.cc
+        polymorphic_in_variant.cpp
 )
 target_link_libraries(polymorphic_in_variant
     PRIVATE

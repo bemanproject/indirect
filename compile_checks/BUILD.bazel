@@ -2,7 +2,7 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 cc_library(
     name = "indirect_in_variant",
-    srcs = ["indirect_in_variant.cc"],
+    srcs = ["indirect_in_variant.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:indirect"],
 )
@@ -14,7 +14,7 @@ build_test(
 
 cc_library(
     name = "indirect_as_member",
-    srcs = ["indirect_as_member.cc"],
+    srcs = ["indirect_as_member.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:indirect"],
 )
@@ -26,7 +26,7 @@ build_test(
 
 cc_library(
     name = "indirect_consteval",
-    srcs = ["indirect_consteval.cc"],
+    srcs = ["indirect_consteval.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:indirect"],
 )
@@ -38,7 +38,7 @@ build_test(
 
 cc_library(
     name = "polymorphic_consteval",
-    srcs = ["polymorphic_consteval.cc"],
+    srcs = ["polymorphic_consteval.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:polymorphic"],
 )
@@ -51,10 +51,10 @@ build_test(
 cc_library(
     name = "indirect_pimpl",
     srcs = [
-        "indirect_pimpl.cc",
-        "indirect_pimpl_use.cc",
+        "indirect_pimpl.cpp",
+        "indirect_pimpl_use.cpp",
     ],
-    hdrs = ["indirect_pimpl.h"],
+    hdrs = ["indirect_pimpl.hpp"],
     visibility = ["//visibility:private"],
     deps = ["//:indirect"],
 )
@@ -67,10 +67,10 @@ build_test(
 cc_library(
     name = "polymorphic_pimpl",
     srcs = [
-        "polymorphic_pimpl.cc",
-        "polymorphic_pimpl_use.cc",
+        "polymorphic_pimpl.cpp",
+        "polymorphic_pimpl_use.cpp",
     ],
-    hdrs = ["polymorphic_pimpl.h"],
+    hdrs = ["polymorphic_pimpl.hpp"],
     visibility = ["//visibility:private"],
     deps = ["//:polymorphic"],
 )
@@ -82,7 +82,7 @@ build_test(
 
 cc_library(
     name = "polymorphic_in_variant",
-    srcs = ["polymorphic_in_variant.cc"],
+    srcs = ["polymorphic_in_variant.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:polymorphic"],
 )
@@ -94,7 +94,7 @@ build_test(
 
 cc_library(
     name = "polymorphic_as_member",
-    srcs = ["polymorphic_as_member.cc"],
+    srcs = ["polymorphic_as_member.cpp"],
     visibility = ["//visibility:private"],
     deps = ["//:polymorphic"],
 )

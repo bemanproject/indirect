@@ -1,4 +1,4 @@
-#include "indirect.h"
+#include "indirect.hpp"
 namespace xyz::testing {
 class Class {
   indirect<class Impl> impl_;

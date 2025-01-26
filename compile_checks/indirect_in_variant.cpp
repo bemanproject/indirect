@@ -2,7 +2,7 @@
 #include <type_traits>
 #include <variant>
 
-#include "polymorphic.h"
+#include "indirect.hpp"
 
 namespace xyz::testing {
 
@@ -14,7 +14,7 @@ struct Number {
 struct BinOp;
 
 struct Expression {
-  std::variant<Number, xyz::polymorphic<BinOp>> info;
+  std::variant<Number, xyz::indirect<BinOp>> info;
 
   friend bool operator==(const Expression&, const Expression&);
   friend std::strong_ordering operator<=>(const Expression&, const Expression&);

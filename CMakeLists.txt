@@ -8,7 +8,7 @@ project(
     beman.indirect # CMake Project Name, which is also the name of the top-level
     DESCRIPTION "Beman implementation of indirect and polymorphic (P3019)"
     LANGUAGES CXX
-    # VERSION ${XYZ_VALUE_TYPES_VERSION} # TODO(lboehm): version??
+    # VERSION ${XYZ_VALUE_TYPES_VERSION} # TODO(lboehm): version
 )
 set(CMAKE_CXX_STANDARD 20)
 

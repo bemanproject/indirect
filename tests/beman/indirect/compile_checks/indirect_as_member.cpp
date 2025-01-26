@@ -1,13 +1,13 @@
 #include <concepts>
 #include <type_traits>
 
-#include "polymorphic.h"
+#include "indirect.hpp"
 namespace xyz::testing {
 
 struct A;
 
 struct Composite {
-  xyz::polymorphic<A> data;
+  xyz::indirect<A> data;
 
   friend bool operator==(const Composite&, const Composite&);
   friend std::strong_ordering operator<=>(const Composite&, const Composite&);

@@ -19,11 +19,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ==============================================================================*/
 
 #ifdef XYZ_INDIRECT_CXX_14
-#include "indirect_cxx14.h"
+#include "beman/indirect/indirect_cxx14.hpp"
 #endif  // XYZ_INDIRECT_CXX_14
 
 #ifndef XYZ_INDIRECT_H
-#include "beman/indirect/indirect.h"
+#include "beman/indirect/indirect.hpp"
 #endif  // XYZ_INDIRECT_H
 
 #include <gtest/gtest.h>
@@ -31,10 +31,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <array>
 #include <map>
 
-#include "beman/indirect/feature_check.h"
-#include "beman/indirect/tagged_allocator.h"
-#include "beman/indirect/test_helpers.h"
-#include "beman/indirect/tracking_allocator.h"
+#include "beman/indirect/feature_check.hpp"
+#include "beman/indirect/tagged_allocator.hpp"
+#include "beman/indirect/test_helpers.hpp"
+#include "beman/indirect/tracking_allocator.hpp"
 #ifdef XYZ_HAS_STD_MEMORY_RESOURCE
 #include <memory_resource>
 #endif  // XYZ_HAS_STD_MEMORY_RESOURCE
