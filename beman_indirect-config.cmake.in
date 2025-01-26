@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+check_required_components(beman.indirect)
+
+if(NOT TARGET beman::indirect)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+    include(${CMAKE_CURRENT_LIST_DIR}/beman_indirect-target.cmake)
+endif()

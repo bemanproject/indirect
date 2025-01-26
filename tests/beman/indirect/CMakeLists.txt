@@ -2,11 +2,22 @@
 
 include(GoogleTest)
 
-add_executable(beman.indirect.tests.identity)
-target_sources(beman.indirect.tests.identity PRIVATE identity.test.cpp)
+add_executable(beman.indirect.tests.indirect)
+target_sources(beman.indirect.tests.indirect PRIVATE indirect_test.cc)
+
 target_link_libraries(
-    beman.indirect.tests.identity
+    beman.indirect.tests.indirect
     PRIVATE beman::indirect GTest::gtest GTest::gtest_main
 )
 
-gtest_add_tests(beman.indirect.tests.identity "" AUTO)
+gtest_add_tests(beman.indirect.tests.indirect "" AUTO)
+
+add_executable(beman.indirect.tests.polymorphic)
+target_sources(beman.indirect.tests.polymorphic PRIVATE polymorphic_test.cc)
+
+target_link_libraries(
+    beman.indirect.tests.polymorphic
+    PRIVATE beman::indirect GTest::gtest GTest::gtest_main
+)
+
+gtest_add_tests(beman.indirect.tests.polymorphic "" AUTO)
