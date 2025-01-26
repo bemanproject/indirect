@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 This can be used as a template for those intending to write Beman libraries.
 It may also find use as a minimal and modern  C++ project structure.
 
-Implements: `std::identity` proposed in [Standard Library Concepts (P0898R3)](https://wg21.link/P0898R3).
+Implements: `std::indirect` and `std::polymorphic` proposed in [indirect and polymorphic: Vocabulary Types for Composite Class Design (P3019)](https://wg21.link/P3019).
 
 ## Usage
 
