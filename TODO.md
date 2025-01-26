@@ -3,6 +3,7 @@
 ## feature parity with value_types repo
 
 - [x] change file names according to beman
+- [X] add beman README status (unstable)
 - [ ] add compile tests
 - [ ] add licenses everywhere
 - [ ] check all TODO comments
@@ -16,11 +17,11 @@
 - [ ] check what the `configure_package_config_file` does
 - [ ] move compile checks to new dir
 - [ ] update README.md
-  - [ ] add beman README status (unstable)
 - [ ] check release-please
 - [ ] ci integration + tests
 - [ ] coordinate with original implementers on how to best cut over
 - [ ] formatting of all files
+- [ ] add examples
 - [ ] maybe: enable bazel support (original repository supports bazel)
 - [ ] maybe: compiler support for cpp14 and cpp17 (original repository supported 14 and 17)
 
