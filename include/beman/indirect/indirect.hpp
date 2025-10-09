@@ -4,6 +4,7 @@
 #define BEMAN_INDIRECT_IDENTITY_HPP
 
 #include <memory>
+#include <type_traits>
 
 namespace beman::indirect {
 
@@ -33,7 +34,8 @@ class indirect {
     /// @post `*this` is not valueless.
     ///
     /// @throws Nothing unless allocator allocation or construction throws.
-    constexpr indirect();
+    constexpr indirect()
+        requires(std::is_default_constructible_v<T>);
 
     /// @brief Allocator-aware default constructor.
     ///
@@ -45,7 +47,8 @@ class indirect {
     /// @post `*this` is not valueless.
     ///
     /// @throws Nothing unless allocator allocation or construction throws.
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& alloc);
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& alloc)
+        requires(std::is_default_constructible_v<T>);
 
     /// @brief Forwarding constructor.
     ///
@@ -62,7 +65,8 @@ class indirect {
     ///
     /// @throws Any exception thrown by the constructor of `T` or allocator operations.
     template <class U, class... Us>
-    explicit constexpr indirect(U&& u, Us&&... us);
+    explicit constexpr indirect(U&& u, Us&&... us)
+        requires(std::is_constructible_v<T, U, Us...>);
 
     /// @brief Allocator-aware forwarding constructor.
     ///
@@ -76,7 +80,8 @@ class indirect {
     ///
     /// @throws Any exception thrown by the constructor of `T` or allocator operations.
     template <class U, class... Us>
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& alloc, U&& u, Us&&... us);
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& alloc, U&& u, Us&&... us)
+        requires(std::is_constructible_v<T, U, Us...>);
 
     /// @brief Copy constructor.
     ///
@@ -91,7 +96,8 @@ class indirect {
     /// @post `*this` is not valueless.
     ///
     /// @throws Any exception thrown by the copy constructor of `T` or allocator operations.
-    constexpr indirect(const indirect& other);
+    constexpr indirect(const indirect& other)
+        requires(std::is_copy_constructible_v<T>);
 
     /// @brief Allocator-aware copy constructor.
     ///
@@ -105,7 +111,8 @@ class indirect {
     /// @post `*this` is not valueless.
     ///
     /// @throws Any exception thrown by the copy constructor of `T` or allocator operations.
-    constexpr indirect(std::allocator_arg_t, const Allocator& alloc, const indirect& other);
+    constexpr indirect(std::allocator_arg_t, const Allocator& alloc, const indirect& other)
+        requires(std::is_copy_constructible_v<T>);
 
     /// @brief Move constructor.
     ///
@@ -150,7 +157,8 @@ class indirect {
     /// @returns `*this`.
     ///
     /// @throws Any exception thrown by the copy constructor of `T` or allocator operations.
-    constexpr indirect& operator=(const indirect& other);
+    constexpr indirect& operator=(const indirect& other)
+        requires(std::is_copy_constructible_v<T>);
 
     /// @brief Move assignment operator.
     ///
