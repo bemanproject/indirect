@@ -33,9 +33,9 @@ class indirect {
     ///
     /// @post `*this` is not valueless.
     ///
-    /// @throws Nothing unless allocator allocation or construction throws.
-    constexpr indirect()
-        requires(std::is_default_constructible_v<T>);
+    /// @throws Nothing unless `allocator_traits<allocator_type>::allocate` or
+    /// `allocator_traits<allocator_type>::construct` throws.
+    constexpr indirect();
 
     /// @brief Allocator-aware default constructor.
     ///
@@ -46,7 +46,8 @@ class indirect {
     ///
     /// @post `*this` is not valueless.
     ///
-    /// @throws Nothing unless allocator allocation or construction throws.
+    /// @throws Nothing unless allocator_traits<allocator_type>::allocate or
+    /// allocator_traits<allocator_type>::construct throws.
     explicit constexpr indirect(std::allocator_arg_t, const Allocator& alloc)
         requires(std::is_default_constructible_v<T>);
 
@@ -65,8 +66,7 @@ class indirect {
     ///
     /// @throws Any exception thrown by the constructor of `T` or allocator operations.
     template <class U, class... Us>
-    explicit constexpr indirect(U&& u, Us&&... us)
-        requires(std::is_constructible_v<T, U, Us...>);
+    explicit constexpr indirect(U&& u, Us&&... us);
 
     /// @brief Allocator-aware forwarding constructor.
     ///
@@ -96,8 +96,7 @@ class indirect {
     /// @post `*this` is not valueless.
     ///
     /// @throws Any exception thrown by the copy constructor of `T` or allocator operations.
-    constexpr indirect(const indirect& other)
-        requires(std::is_copy_constructible_v<T>);
+    constexpr indirect(const indirect& other);
 
     /// @brief Allocator-aware copy constructor.
     ///
@@ -157,8 +156,7 @@ class indirect {
     /// @returns `*this`.
     ///
     /// @throws Any exception thrown by the copy constructor of `T` or allocator operations.
-    constexpr indirect& operator=(const indirect& other)
-        requires(std::is_copy_constructible_v<T>);
+    constexpr indirect& operator=(const indirect& other);
 
     /// @brief Move assignment operator.
     ///
