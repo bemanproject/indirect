@@ -5,6 +5,11 @@
 
 namespace beman::indirect {
 
+/*
+ * This is a dummy function to allow test coverage to generate *something* so it won't fail CI.
+ */
+constexpr auto dummy_function() { return 1 + 1; }
+
 class Indirect;
 
 } // namespace beman::indirect
