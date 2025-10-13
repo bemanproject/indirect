@@ -12,9 +12,10 @@ struct CountingAllocator {
     using value_type      = T;
     using size_type       = std::size_t;
     using difference_type = std::ptrdiff_t;
+    using Id_type         = int;
 
     constexpr CountingAllocator() = default;
-    constexpr explicit CountingAllocator(size_type init_num) : num_allocated(init_num), num_deallocated(init_num) {}
+    constexpr explicit CountingAllocator(Id_type init_num) : id(init_num) {}
     constexpr ~CountingAllocator() = default;
 
     constexpr T* allocate(std::size_t n) {
@@ -31,6 +32,7 @@ struct CountingAllocator {
 
     size_type num_allocated   = 0;
     size_type num_deallocated = 0;
+    Id_type   id              = -1;
 };
 
 // making sure the allocators are consteval-able
@@ -73,7 +75,7 @@ TEST(IncompleteTests, DefaultInitializableWAllocator) {
     }
     ASSERT_ALLOC_EVEN(alloc);
     // Make sure the allocator is actually passed in
-    ASSERT_EQ(alloc.num_allocated, 21);
+    ASSERT_EQ(alloc.id, 20);
 }
 
 template <std::size_t* num_constructor_calls>
@@ -103,10 +105,28 @@ TEST(IndirectTest, InitializeWForwardAndAlloc) {
     CountingAllocator<T> alloc(25);
 
     {
-        indirect<T> instance(1, 2, 3);
+        indirect<T> instance(std::allocator_arg_t{}, alloc, 1, 2, 3);
         EXPECT_EQ(num_constructor_calls, 1);
         EXPECT_EQ(*instance, T(1, 2, 3));
     }
+
+    ASSERT_ALLOC_EVEN(alloc);
+    EXPECT_EQ(alloc.id, 25);
+}
+
+TEST(IncompleteTests, InitializeWForwardAndAlloc) {
+    static std::size_t num_constructor_calls = 0;
+    num_constructor_calls                    = 0;
+
+    struct T;
+    CountingAllocator<T> alloc(25);
+
+    struct T {
+        int         a, b, c;
+        indirect<T> ind{std::allocator_arg_t{}, alloc, 1, 2, 3};
+    };
+
+    indirect<T> instance;
 
     ASSERT_ALLOC_EVEN(alloc);
     EXPECT_EQ(alloc.num_allocated, 26);
