@@ -9,4 +9,4 @@
 
 namespace exe = beman::indirect;
 
-TEST(IndirectTests, EnvSetup) {}
+TEST(IndirectTests, EnvSetup) { EXPECT_EQ(exe::dummy_function(), 2); }
