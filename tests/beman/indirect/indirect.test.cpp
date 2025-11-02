@@ -49,11 +49,9 @@ using indirect = beman::indirect::indirect<T, CountingAllocator<T>>;
 
 // TODO: Move these to a header file and add factory methods so they can be in another TU to test for incomplete type.
 struct Composite {
-    int a = 0;
-    int b = 0;
-    int c = 0;
+    int a, b, c;
 
-    Composite() = default;
+    Composite() : a(0), b(0), c(0) {}
     Composite(int _a, int _b, int _c) : a(_a), b(_b), c(_c) {}
 
     bool operator==(const Composite& other) const { return a == other.a && b == other.b && c == other.c; }
@@ -80,19 +78,17 @@ struct DefaultConstructible {
     bool operator==(const DefaultConstructible& other) const { return value == other.value; }
 };
 
-struct VectorLike {
+struct VectorWrapper {
     std::vector<int> data;
-    explicit VectorLike(std::initializer_list<int> ilist) : data(ilist) {}
-    bool operator==(const VectorLike& other) const { return data == other.data; }
+    explicit VectorWrapper(std::initializer_list<int> ilist) : data(ilist) {}
+    bool operator==(const VectorWrapper& other) const { return data == other.data; }
 };
 
-struct VectorWithMultiplier {
+struct VectorWithInt {
     std::vector<int> data;
     int              multiplier;
-    explicit VectorWithMultiplier(std::initializer_list<int> ilist, int mult) : data(ilist), multiplier(mult) {}
-    bool operator==(const VectorWithMultiplier& other) const {
-        return data == other.data && multiplier == other.multiplier;
-    }
+    explicit VectorWithInt(std::initializer_list<int> ilist, int mult) : data(ilist), multiplier(mult) {}
+    bool operator==(const VectorWithInt& other) const { return data == other.data && multiplier == other.multiplier; }
 };
 
 // ========================================
@@ -148,7 +144,7 @@ TEST(IndirectTest, InPlaceConstructorBasic) {
 
 TEST(IndirectTest, InPlaceConstructorBasicWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc(25);
+    CountingAllocator<T> alloc;
 
     {
         indirect<T> instance(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
@@ -176,7 +172,7 @@ TEST(IndirectTest, InPlaceConstructorWithArgs) {
 
 TEST(IndirectTest, InPlaceConstructorWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc(400);
+    CountingAllocator<T> alloc;
 
     {
         indirect<T> instance(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
@@ -189,7 +185,7 @@ TEST(IndirectTest, InPlaceConstructorWithAllocator) {
 
 TEST(IncompleteTests, InPlaceConstructorWithIncompleteType) {
     struct T;
-    CountingAllocator<T> alloc(25);
+    CountingAllocator<T> alloc;
 
     struct T {
         int         a, b, c;
@@ -199,7 +195,7 @@ TEST(IncompleteTests, InPlaceConstructorWithIncompleteType) {
     indirect<T> instance;
 
     ASSERT_NO_LEAKS(alloc);
-    EXPECT_EQ(alloc.num_allocated, 26);
+    EXPECT_EQ(alloc.num_allocated, 1);
 }
 
 // ========================================
@@ -261,7 +257,7 @@ TEST(IndirectTest, MoveConstructor) {
 
 TEST(IndirectTest, MoveConstructorWithAllocatorSameAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc(100);
+    CountingAllocator<T> alloc;
 
     {
         indirect<T> original(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
@@ -298,7 +294,7 @@ TEST(IndirectTest, ForwardingConstructorFromRValue) {
 
 TEST(IndirectTest, ForwardingConstructorFromLValueWithAllocator) {
     using T = SimpleType;
-    CountingAllocator<T> alloc(300);
+    CountingAllocator<T> alloc;
 
     {
         T           value(42);
@@ -323,22 +319,22 @@ TEST(IndirectTest, ForwardingConstructorFromMoveOnlyType) {
 // ========================================
 
 TEST(IndirectTest, InitializerListConstructor) {
-    using T = VectorLike;
+    using T = VectorWrapper;
     indirect<T> instance(std::in_place, {1, 2, 3, 4, 5});
 
     EXPECT_EQ(*instance, T({1, 2, 3, 4, 5}));
 }
 
 TEST(IndirectTest, InitializerListConstructorWithArgs) {
-    using T = VectorWithMultiplier;
+    using T = VectorWithInt;
     indirect<T> instance(std::in_place, {10, 20, 30}, 2);
 
     EXPECT_EQ(*instance, T({10, 20, 30}, 2));
 }
 
 TEST(IndirectTest, InitializerListConstructorWithAllocator) {
-    using T = VectorLike;
-    CountingAllocator<T> alloc(500);
+    using T = VectorWrapper;
+    CountingAllocator<T> alloc;
 
     {
         indirect<T> instance(std::allocator_arg, alloc, std::in_place, {7, 8, 9});
@@ -350,8 +346,8 @@ TEST(IndirectTest, InitializerListConstructorWithAllocator) {
 }
 
 TEST(IndirectTest, InitializerListConstructorWithAllocatorAndArgs) {
-    using T = VectorWithMultiplier;
-    CountingAllocator<T> alloc(600);
+    using T = VectorWithInt;
+    CountingAllocator<T> alloc;
 
     {
         indirect<T> instance(std::allocator_arg, alloc, std::in_place, {100, 200}, 5);
