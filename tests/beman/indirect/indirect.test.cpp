@@ -110,12 +110,31 @@ TEST(IncompleteTests, CanHoldIncompleteType) {
 // Default Constructor Tests
 // ========================================
 
+/**
+ * explicit constexpr indirect();
+ *
+ * Constraints: is_default_constructible_v<Allocator> is true.
+ *
+ * Mandates: is_default_constructible_v<T> is true.
+ *
+ * Effects: Constructs an owned object of type T with an empty argument list, using the allocator alloc.
+ */
+
 TEST(IndirectTest, DefaultConstructor) {
     using T = DefaultConstructible;
     indirect<T> instance;
 
     EXPECT_FALSE(instance.valueless_after_move());
 }
+
+/**
+ * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a);
+ *
+ * Mandates: is_default_constructible_v<T> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a.
+ * Constructs an owned object of type T with an empty argument list, using the allocator alloc.
+ */
 
 TEST(IndirectTest, DefaultConstructorWithAllocator) {
     using T = DefaultConstructible;
@@ -135,12 +154,33 @@ TEST(IndirectTest, DefaultConstructorWithAllocator) {
 // in_place Constructor Tests
 // ========================================
 
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::in_place_t, Us&&... us);
+ *
+ * Constraints:
+ * • is_constructible_v<T, Us...> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
+
 TEST(IndirectTest, InPlaceConstructorBasic) {
     using T = Composite;
     indirect<T> instance(std::in_place, 1, 2, 3);
 
     EXPECT_EQ(*instance, T(1, 2, 3));
 }
+
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us);
+ *
+ * Constraints: is_constructible_v<T, Us...> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a.
+ * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
 
 TEST(IndirectTest, InPlaceConstructorBasicWithAllocator) {
     using T = Composite;
@@ -156,6 +196,17 @@ TEST(IndirectTest, InPlaceConstructorBasicWithAllocator) {
     EXPECT_EQ(alloc.num_allocated, 1);
 }
 
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::in_place_t, Us&&... us);
+ *
+ * Constraints:
+ * • is_constructible_v<T, Us...> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
+
 TEST(IndirectTest, InPlaceConstructorNoArgs) {
     using T = DefaultConstructible;
     indirect<T> instance(std::in_place);
@@ -163,12 +214,33 @@ TEST(IndirectTest, InPlaceConstructorNoArgs) {
     EXPECT_EQ(*instance, T());
 }
 
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::in_place_t, Us&&... us);
+ *
+ * Constraints:
+ * • is_constructible_v<T, Us...> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
+
 TEST(IndirectTest, InPlaceConstructorWithArgs) {
     using T = Composite;
     indirect<T> instance(std::in_place, 5, 10, 15);
 
     EXPECT_EQ(*instance, T(5, 10, 15));
 }
+
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us);
+ *
+ * Constraints: is_constructible_v<T, Us...> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a.
+ * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
 
 TEST(IndirectTest, InPlaceConstructorWithAllocator) {
     using T = Composite;
@@ -182,6 +254,16 @@ TEST(IndirectTest, InPlaceConstructorWithAllocator) {
 
     ASSERT_NO_LEAKS(alloc);
 }
+
+/**
+ * template <class... Us>
+ * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us);
+ *
+ * Constraints: is_constructible_v<T, Us...> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a.
+ * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
+ */
 
 TEST(IncompleteTests, InPlaceConstructorWithIncompleteType) {
     struct T;
@@ -202,6 +284,17 @@ TEST(IncompleteTests, InPlaceConstructorWithIncompleteType) {
 // Copy Constructor Tests
 // ========================================
 
+/**
+ * constexpr indirect(const indirect& other);
+ *
+ * Mandates: is_copy_constructible_v<T> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with
+ * allocator_traits<Allocator>::select_on_container_copy_construction(other.alloc).
+ * If other is valueless, *this is valueless.
+ * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
+ */
+
 TEST(IndirectTest, CopyConstructor) {
     using T = Composite;
     indirect<T> original(std::in_place, 10, 20, 30);
@@ -216,6 +309,15 @@ TEST(IndirectTest, CopyConstructor) {
     EXPECT_EQ(*copy, T(999, 20, 30));
     EXPECT_EQ(*original, T(10, 20, 30));
 }
+
+/**
+ * constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other);
+ *
+ * Mandates: is_copy_constructible_v<T> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a. If other is valueless, *this is valueless.
+ * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
+ */
 
 TEST(IndirectTest, CopyConstructorWithAllocator) {
     using T = Composite;
@@ -243,6 +345,16 @@ TEST(IndirectTest, CopyConstructorWithAllocator) {
 // Move Constructor Tests
 // ========================================
 
+/**
+ * constexpr indirect(indirect&& other) noexcept;
+ *
+ * Effects: alloc is direct-non-list-initialized from std::move(other.alloc).
+ * If other is valueless, *this is valueless.
+ * Otherwise *this takes ownership of the owned object of other.
+ *
+ * Postconditions: other is valueless.
+ */
+
 TEST(IndirectTest, MoveConstructor) {
     using T = Composite;
     indirect<T> original(std::in_place, 10, 20, 30);
@@ -254,6 +366,21 @@ TEST(IndirectTest, MoveConstructor) {
     EXPECT_EQ(*moved, T(10, 20, 30));
     EXPECT_TRUE(original.valueless_after_move());
 }
+
+/**
+ * constexpr indirect(std::allocator_arg_t,
+ *                    const Allocator& a,
+ *                    indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value);
+ *
+ * Mandates: If allocator_traits<Allocator>::is_always_equal::value is false then T is a complete type.
+ *
+ * Effects: alloc is direct-non-list-initialized with a. If other is valueless, *this is valueless.
+ * Otherwise, if alloc == other.alloc is true,
+ * constructs an object of type indirect that takes ownership of the owned object of other.
+ * Otherwise, constructs an owned object of type T with *std::move(other), using the allocator alloc.
+ *
+ * Postconditions: other is valueless.
+ */
 
 TEST(IndirectTest, MoveConstructorWithAllocatorSameAllocator) {
     using T = Composite;
@@ -276,6 +403,19 @@ TEST(IndirectTest, MoveConstructorWithAllocatorSameAllocator) {
 // Forwarding Constructor Tests (U&&)
 // ========================================
 
+/**
+ * template <class U = T>
+ * explicit constexpr indirect(U&& u);
+ *
+ * Constraints:
+ * • is_same_v<remove_cvref_t<U>, indirect> is false,
+ * • is_same_v<remove_cvref_t<U>, in_place_t> is false,
+ * • is_constructible_v<T, U> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
+ */
+
 TEST(IndirectTest, ForwardingConstructorFromLValue) {
     using T = SimpleType;
     T           value(42);
@@ -285,12 +425,38 @@ TEST(IndirectTest, ForwardingConstructorFromLValue) {
     EXPECT_EQ(value, T(42)); // Original should be unchanged
 }
 
+/**
+ * template <class U = T>
+ * explicit constexpr indirect(U&& u);
+ *
+ * Constraints:
+ * • is_same_v<remove_cvref_t<U>, indirect> is false,
+ * • is_same_v<remove_cvref_t<U>, in_place_t> is false,
+ * • is_constructible_v<T, U> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
+ */
+
 TEST(IndirectTest, ForwardingConstructorFromRValue) {
     using T = SimpleType;
     indirect<T> instance(T(42));
 
     EXPECT_EQ(*instance, T(42));
 }
+
+/**
+ * template <class U = T>
+ * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, U&& u);
+ *
+ * Constraints:
+ * • is_same_v<remove_cvref_t<U>, indirect> is false,
+ * • is_same_v<remove_cvref_t<U>, in_place_t> is false, and
+ * • is_constructible_v<T, U> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a.
+ * Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
+ */
 
 TEST(IndirectTest, ForwardingConstructorFromLValueWithAllocator) {
     using T = SimpleType;
@@ -307,6 +473,19 @@ TEST(IndirectTest, ForwardingConstructorFromLValueWithAllocator) {
     ASSERT_NO_LEAKS(alloc);
 }
 
+/**
+ * template <class U = T>
+ * explicit constexpr indirect(U&& u);
+ *
+ * Constraints:
+ * • is_same_v<remove_cvref_t<U>, indirect> is false,
+ * • is_same_v<remove_cvref_t<U>, in_place_t> is false,
+ * • is_constructible_v<T, U> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
+ */
+
 TEST(IndirectTest, ForwardingConstructorFromMoveOnlyType) {
     using T = MoveOnlyType;
     indirect<T> instance(T(99));
@@ -318,6 +497,18 @@ TEST(IndirectTest, ForwardingConstructorFromMoveOnlyType) {
 // initializer_list Constructor Tests
 // ========================================
 
+/**
+ * template <class I, class... Us>
+ * explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+ *
+ * Constraints:
+ * • is_constructible_v<T, initializer_list<I>&, Us...> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with the arguments ilist, std::forward<Us>(us)...,
+ * using the allocator alloc.
+ */
+
 TEST(IndirectTest, InitializerListConstructor) {
     using T = VectorWrapper;
     indirect<T> instance(std::in_place, {1, 2, 3, 4, 5});
@@ -325,12 +516,35 @@ TEST(IndirectTest, InitializerListConstructor) {
     EXPECT_EQ(*instance, T({1, 2, 3, 4, 5}));
 }
 
+/**
+ * template <class I, class... Us>
+ * explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+ *
+ * Constraints:
+ * • is_constructible_v<T, initializer_list<I>&, Us...> is true, and
+ * • is_default_constructible_v<Allocator> is true.
+ *
+ * Effects: Constructs an owned object of type T with the arguments ilist, std::forward<Us>(us)...,
+ * using the allocator alloc.
+ */
+
 TEST(IndirectTest, InitializerListConstructorWithArgs) {
     using T = VectorWithInt;
     indirect<T> instance(std::in_place, {10, 20, 30}, 2);
 
     EXPECT_EQ(*instance, T({10, 20, 30}, 2));
 }
+
+/**
+ * template <class I, class... Us>
+ * explicit constexpr indirect(
+ *     std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+ *
+ * Constraints: is_constructible_v<T, initializer_list<I>&, Us...> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a. Constructs an owned object of type T with the arguments
+ * ilist, std::forward<Us>(us)..., using the allocator alloc.
+ */
 
 TEST(IndirectTest, InitializerListConstructorWithAllocator) {
     using T = VectorWrapper;
@@ -344,6 +558,17 @@ TEST(IndirectTest, InitializerListConstructorWithAllocator) {
 
     ASSERT_NO_LEAKS(alloc);
 }
+
+/**
+ * template <class I, class... Us>
+ * explicit constexpr indirect(
+ *     std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+ *
+ * Constraints: is_constructible_v<T, initializer_list<I>&, Us...> is true.
+ *
+ * Effects: alloc is direct-non-list-initialized with a. Constructs an owned object of type T with the arguments
+ * ilist, std::forward<Us>(us)..., using the allocator alloc.
+ */
 
 TEST(IndirectTest, InitializerListConstructorWithAllocatorAndArgs) {
     using T = VectorWithInt;
