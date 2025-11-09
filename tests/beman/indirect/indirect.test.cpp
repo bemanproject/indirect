@@ -7,12 +7,22 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-template <typename T>
+enum AllocatorPropagationPolicy {
+    PROPAGATE_NONE    = 0b000,
+    PROPAGATE_ON_COPY = 0b001,
+    PROPAGATE_ON_MOVE = 0b010,
+    PROPAGATE_ON_SWAP = 0b100,
+};
+
+template <typename T, AllocatorPropagationPolicy policy = PROPAGATE_NONE>
 struct CountingAllocator {
-    using value_type      = T;
-    using size_type       = std::size_t;
-    using difference_type = std::ptrdiff_t;
-    using Id_type         = int;
+    using value_type                             = T;
+    using size_type                              = std::size_t;
+    using difference_type                        = std::ptrdiff_t;
+    using propagate_on_container_copy_assignment = std::bool_constant<(policy & PROPAGATE_ON_COPY) != 0>;
+    using propagate_on_container_move_assignment = std::bool_constant<(policy & PROPAGATE_ON_MOVE) != 0>;
+    using propagate_on_container_swap            = std::bool_constant<(policy & PROPAGATE_ON_SWAP) != 0>;
+    using Id_type                                = int;
 
     constexpr CountingAllocator() = default;
     constexpr explicit CountingAllocator(Id_type _id) : id(_id) {}
@@ -27,6 +37,9 @@ struct CountingAllocator {
         ++num_deallocated;
         _backing.deallocate(p, n);
     }
+
+    bool operator==(const CountingAllocator& other) const { return id == other.id; }
+    bool operator!=(const CountingAllocator& other) const { return id != other.id; }
 
     std::allocator<T> _backing{};
 
@@ -44,8 +57,8 @@ static_assert(std::invoke([]() {
 
 #define ASSERT_NO_LEAKS(alloc) EXPECT_EQ(alloc.num_allocated, alloc.num_deallocated)
 
-template <typename T>
-using indirect = beman::indirect::indirect<T, CountingAllocator<T>>;
+template <typename T, typename Alloc = CountingAllocator<T>>
+using indirect = beman::indirect::indirect<T, Alloc>;
 
 // TODO: Move these to a header file and add factory methods so they can be in another TU to test for incomplete type.
 struct Composite {
@@ -60,7 +73,14 @@ struct Composite {
 struct SimpleType {
     int value;
     explicit SimpleType(int v) : value(v) {}
+    SimpleType& operator=(const SimpleType&) = default;
     bool operator==(const SimpleType& other) const { return value == other.value; }
+};
+
+struct ConvertibleToSimpleType {
+    int value;
+    explicit ConvertibleToSimpleType(int v) : value(v) {}
+    operator SimpleType() const { return SimpleType(value); }
 };
 
 struct MoveOnlyType {
@@ -580,5 +600,728 @@ TEST(IndirectTest, InitializerListConstructorWithAllocatorAndArgs) {
         EXPECT_EQ(*instance, T({100, 200}, 5));
     }
 
+    ASSERT_NO_LEAKS(alloc);
+}
+
+// ========================================
+// Copy Assignment Operator Tests
+// ========================================
+
+/**
+ * constexpr indirect& operator=(const indirect& other);
+ *
+ * Mandates:
+ * • is_copy_assignable_v<T> is true, and
+ * • is_copy_constructible_v<T> is true.
+ *
+ * Effects: If addressof(other) == this is true, there are no effects.
+ * Otherwise:
+ * 1. The allocator needs updating if
+ *    allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
+ * 2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
+ *    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+ * 3. Otherwise, if alloc == other.alloc is true and *this is not valueless, equivalent to **this = *other.
+ * 4. Otherwise a new owned object is constructed in *this using allocator_traits<Allocator>::construct
+ *    with the owned object from other as the argument,
+ *    using either the allocator in *this or the allocator in other if the allocator needs updating.
+ * 5. The previously owned object in *this, if any,
+ *    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+ * 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
+ *
+ * Returns: A reference to *this.
+ *
+ * Remarks: If any exception is thrown, the result of the expression this->valueless_after_move() remains unchanged.
+ * If an exception is thrown during the call to T's selected copy constructor, no effect.
+ * If an exception is thrown during the call to T's copy assignment,
+ * the state of its contained value is as defined by the exception safety guarantee of T's copy assignment.
+ *
+ * TODO: Test for exception behaivor
+ */
+
+TEST(IndirectTest, CopyAssignmentBasic) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    target = source;
+
+    EXPECT_EQ(*target, T(10, 20, 30));
+    EXPECT_EQ(*source, T(10, 20, 30));
+
+    // Verify independence
+    target->a = 999;
+    EXPECT_EQ(*target, T(999, 20, 30));
+    EXPECT_EQ(*source, T(10, 20, 30));
+}
+
+TEST(IndirectTest, CopyAssignmentSelfAssignment) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    instance = instance;
+
+    EXPECT_EQ(*instance, T(10, 20, 30));
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, CopyAssignmentWithAllocator) {
+    using T = Composite;
+    CountingAllocator<T> alloc1;
+    CountingAllocator<T> alloc2;
+
+    {
+        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        target = source;
+
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_EQ(*source, T(10, 20, 30));
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, CopyAssignmentFromValuelessToNonValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make source valueless
+    indirect<T> temp(std::move(source));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+
+    // Assign from valueless source to non-valueless target
+    target = source;
+
+    // Both should be valueless now
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, CopyAssignmentFromNonValuelessToValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make target valueless
+    indirect<T> temp(std::move(target));
+    EXPECT_FALSE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+
+    // Assign from non-valueless source to valueless target
+    target = source;
+
+    EXPECT_EQ(*target, T(10, 20, 30));
+    EXPECT_EQ(*source, T(10, 20, 30));
+    EXPECT_FALSE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, CopyAssignmentFromValuelessToValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make both valueless
+    indirect<T> temp1(std::move(source));
+    indirect<T> temp2(std::move(target));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+
+    // Assign from valueless source to valueless target
+    target = source;
+
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, CopyAssignmentWithPropagateCopyAllocator) {
+    // Test condition 1 and 6: allocator propagation on copy assignment
+    // 1. The allocator needs updating if
+    //    allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
+    // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
+
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_ON_COPY>;
+
+    static_assert(std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value);
+
+    Alloc alloc1(100);
+    Alloc alloc2(200);
+
+    {
+        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        // Before assignment, allocators are different
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+        EXPECT_EQ(source.get_allocator().id, 100);
+        EXPECT_EQ(target.get_allocator().id, 200);
+
+        target = source;
+
+        // After assignment with propagate_on_container_copy_assignment=true,
+        // target should have source's allocator
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_EQ(*source, T(10, 20, 30));
+        EXPECT_EQ(target.get_allocator(), source.get_allocator());
+        EXPECT_EQ(target.get_allocator().id, 100);
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, CopyAssignmentWithoutPropagateCopyAllocator) {
+    // Test inverse to the case above:
+    // allocator does NOT propagate when propagate_on_container_copy_assignment is false
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+
+    static_assert(!std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value);
+
+    Alloc alloc1(100);
+    Alloc alloc2(200);
+
+    {
+        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        // Before assignment, allocators are different
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+        EXPECT_EQ(source.get_allocator().id, 100);
+        EXPECT_EQ(target.get_allocator().id, 200);
+
+        target = source;
+
+        // After assignment with propagate_on_container_copy_assignment=false,
+        // target should keep its original allocator
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_EQ(*source, T(10, 20, 30));
+        EXPECT_NE(target.get_allocator(), source.get_allocator());
+        EXPECT_EQ(target.get_allocator().id, 200); // Still has original allocator
+        EXPECT_EQ(source.get_allocator().id, 100);
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, CopyAssignmentDifferentAllocatorsConstructsNewObject) {
+    // Tests for
+    // 4. Otherwise (other is not valueless, and "this" and "other" does not share allocator)
+    //    a new owned object is constructed in *this using allocator_traits<Allocator>::construct
+    //    with the owned object from other as the argument,
+    //    using either the allocator in *this or the allocator in other if the allocator needs updating.
+    // 5. The previously owned object in *this, if any,
+    //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+
+    using T = Composite;
+    CountingAllocator<T> alloc1(100);
+    CountingAllocator<T> alloc2(200);
+
+    {
+        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+
+        // Before assignment: target's allocator has allocated 1 object
+        EXPECT_EQ(target.get_allocator().num_allocated, 1);
+
+        // Assignment with different allocators should construct new object
+        target = source;
+
+        // After assignment: target's allocator should have allocated another object
+        EXPECT_EQ(target.get_allocator().num_allocated, 2);   // New allocation happened
+        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destoried
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_EQ(*source, T(10, 20, 30));
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, CopyAssignmentSameAllocatorInPlace) {
+    // Test condition 3: if alloc == other.alloc and *this is not valueless, use **this = *other
+    using T = Composite;
+    CountingAllocator<T> alloc(100);
+
+    {
+        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+
+        EXPECT_EQ(source.get_allocator(), target.get_allocator());
+
+        // Before assignment: allocator has allocated 2 objects
+        EXPECT_EQ(alloc.num_allocated, 2);
+
+        // Both use same allocator, so assignment should be in-place via **this = *other
+        // This should NOT allocate a new object
+        target = source;
+
+        // After assignment: no new allocation should have occurred
+        EXPECT_EQ(alloc.num_allocated, 2);
+        EXPECT_EQ(alloc.num_deallocated, 0);
+
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_EQ(*source, T(10, 20, 30));
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+// ========================================
+// Move Assignment Operator Tests
+// ========================================
+
+/**
+ * constexpr indirect& operator=(indirect&& other) noexcept(
+ *     std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value ||
+ *     std::allocator_traits<Allocator>::is_always_equal::value);
+ *
+ * Mandates: is_copy_constructible_t<T> is true.
+ *
+ * Effects: If addressof(other) == this is true, there are no effects. Otherwise:
+ * 1. The allocator needs updating if
+ *    allocator_traits<Allocator>::propagate_on_container_move_assignment::value is true.
+ * 2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
+ *    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+ * 3. Otherwise, if alloc == other.alloc is true, swaps the owned objects in *this and other;
+ *    the owned object in other, if any,
+ *    is then destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+ * 4. Otherwise constructs a new owned object with the owned object of other as the argument as an rvalue,
+ *    using either the allocator in *this or the allocator in other if the allocator needs updating.
+ * 5. The previously owned object in *this, if any,
+ *    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+ * 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
+ *
+ * Postconditions: other is valueless.
+ *
+ * Returns: A reference to *this.
+ *
+ * Remarks: If any exception is thrown, there are no effects on *this or other.
+ */
+
+TEST(IndirectTest, MoveAssignmentBasic) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    EXPECT_FALSE(source.valueless_after_move());
+
+    target = std::move(source);
+
+    EXPECT_EQ(*target, T(10, 20, 30));
+    EXPECT_TRUE(source.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentSelfAssignment) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    instance = std::move(instance);
+
+    EXPECT_EQ(*instance, T(10, 20, 30));
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentWithAllocator) {
+    using T = Composite;
+    CountingAllocator<T> alloc1;
+    CountingAllocator<T> alloc2;
+
+    {
+        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        target = std::move(source);
+
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, MoveAssignmentSameAllocator) {
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+
+        target = std::move(source);
+
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, MoveAssignmentMoveOnlyType) {
+    using T = MoveOnlyType;
+    indirect<T> source(std::in_place, 99);
+    indirect<T> target(std::in_place, 1);
+
+    target = std::move(source);
+
+    EXPECT_EQ(*target, T(99));
+    EXPECT_TRUE(source.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentFromValuelessToNonValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make source valueless
+    indirect<T> temp(std::move(source));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+
+    // Move assign from valueless source to non-valueless target
+    target = std::move(source);
+
+    // Both should be valueless now
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentFromNonValuelessToValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make target valueless
+    indirect<T> temp(std::move(target));
+    EXPECT_FALSE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+
+    // Move assign from non-valueless source to valueless target
+    target = std::move(source);
+
+    EXPECT_EQ(*target, T(10, 20, 30));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentFromValuelessToValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make both valueless
+    indirect<T> temp1(std::move(source));
+    indirect<T> temp2(std::move(target));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+
+    // Move assign from valueless source to valueless target
+    target = std::move(source);
+
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, MoveAssignmentWithPropagateMoveAllocator) {
+    // Test condition 1 and 6: allocator propagation on move assignment
+    // 1. The allocator needs updating if
+    //    allocator_traits<Allocator>::propagate_on_container_move_assignment::value is true.
+    // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
+
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_ON_MOVE>;
+
+    static_assert(std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value);
+
+    Alloc alloc1(100);
+    Alloc alloc2(200);
+
+    {
+        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        // Before assignment, allocators are different
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+        EXPECT_EQ(source.get_allocator().id, 100);
+        EXPECT_EQ(target.get_allocator().id, 200);
+
+        target = std::move(source);
+
+        // After move assignment with propagate_on_container_move_assignment=true,
+        // target should have source's allocator
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+        EXPECT_EQ(target.get_allocator().id, 100);
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, MoveAssignmentWithoutPropagateMoveAllocator) {
+    // Test inverse to the case above:
+    // allocator does NOT propagate when propagate_on_container_move_assignment is false
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+
+    static_assert(!std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value);
+
+    Alloc alloc1(100);
+    Alloc alloc2(200);
+
+    {
+        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        // Before assignment, allocators are different
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+        EXPECT_EQ(source.get_allocator().id, 100);
+        EXPECT_EQ(target.get_allocator().id, 200);
+
+        target = std::move(source);
+
+        // After move assignment with propagate_on_container_move_assignment=false,
+        // target should keep its original allocator
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+        EXPECT_EQ(target.get_allocator().id, 200); // Still has original allocator
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, MoveAssignmentDifferentAllocatorsConstructsNewObject) {
+    // Tests for
+    // 4. Otherwise (other is not valueless, and "this" and "other" does not share allocator)
+    //    constructs a new owned object with the owned object of other as the argument as an rvalue,
+    //    using either the allocator in *this or the allocator in other if the allocator needs updating.
+    // 5. The previously owned object in *this, if any,
+    //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+
+    using T = Composite;
+    CountingAllocator<T> alloc1(100);
+    CountingAllocator<T> alloc2(200);
+
+    {
+        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+
+        EXPECT_NE(source.get_allocator(), target.get_allocator());
+
+        // Before assignment: target's allocator has allocated 1 object
+        EXPECT_EQ(target.get_allocator().num_allocated, 1);
+
+        // Move assignment with different allocators should construct new object
+        target = std::move(source);
+
+        // After assignment: target's allocator should have allocated another object
+        EXPECT_EQ(target.get_allocator().num_allocated, 2);   // New allocation happened
+        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destroyed
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, MoveAssignmentSameAllocatorSwap) {
+    // Test condition 3: if alloc == other.alloc, swaps the owned objects then destroys
+    using T = Composite;
+    CountingAllocator<T> alloc(100);
+
+    {
+        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+
+        EXPECT_EQ(source.get_allocator(), target.get_allocator());
+
+        // Before assignment: allocator has allocated 2 objects
+        EXPECT_EQ(alloc.num_allocated, 2);
+        size_t alloc_count_before = alloc.num_allocated;
+
+        // Both use same allocator, so move assignment should swap then destroy
+        target = std::move(source);
+
+        // After assignment: no new allocation (swap + destroy, not construct new)
+        EXPECT_EQ(alloc.num_allocated, alloc_count_before); // No new allocation
+        EXPECT_EQ(alloc.num_deallocated, 1);                // One object destroyed (the swapped one)
+        EXPECT_EQ(*target, T(10, 20, 30));
+        EXPECT_TRUE(source.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+// ========================================
+// Forwarding Assignment Operator Tests
+// ========================================
+
+/**
+ * template <class U = T>
+ * constexpr indirect& operator=(U&& u);
+ *
+ * Constraints:
+ * • is_same_v<remove_cvref_t<U>, indirect> is false,
+ * • is_constructible_v<T, U> is true, and
+ * • is_assignable_v<T&, U> is true.
+ *
+ * Effects: If *this is valueless then constructs an owned object of type T with std::forward<U>(u)
+ * using the allocator alloc.
+ * Otherwise, equivalent to **this = std::forward<U>(u).
+ *
+ * Returns: A reference to *this.
+ */
+
+TEST(IndirectTest, ForwardingAssignmentFromLValue) {
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+        T                                 value(99);
+
+        instance = value;
+
+        EXPECT_EQ(*instance, T(99));
+        EXPECT_EQ(value, T(99)); // Original unchanged
+    }
+
+    EXPECT_EQ(alloc.num_allocated, 1);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromRValue) {
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+
+        instance = T(99);
+
+        EXPECT_EQ(*instance, T(99));
+    }
+
+    EXPECT_EQ(alloc.num_allocated, 1);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromLValueToValueless) {
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+
+        // Make instance valueless
+        indirect<T, CountingAllocator<T>> temp(std::move(instance));
+        EXPECT_TRUE(instance.valueless_after_move());
+
+        // Assign to valueless instance - should construct new object
+        T value(99);
+        instance = value;
+
+        EXPECT_FALSE(instance.valueless_after_move());
+        EXPECT_EQ(*instance, T(99));
+        EXPECT_EQ(value, T(99)); // Original unchanged
+    }
+
+    // Should have 2 allocations: initial + new construction for valueless target
+    EXPECT_EQ(alloc.num_allocated, 2);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromRValueToValueless) {
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+
+        // Make instance valueless
+        indirect<T, CountingAllocator<T>> temp(std::move(instance));
+        EXPECT_TRUE(instance.valueless_after_move());
+
+        // Assign rvalue to valueless instance - should construct new object
+        instance = T(99);
+
+        EXPECT_FALSE(instance.valueless_after_move());
+        EXPECT_EQ(*instance, T(99));
+    }
+
+    // Should have 2 allocations: initial + new construction for valueless target
+    EXPECT_EQ(alloc.num_allocated, 2);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromConvertibleType) {
+    // Test U != T case where U is convertible to T
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+        ConvertibleToSimpleType value(99);
+
+        instance = value;
+
+        EXPECT_EQ(*instance, T(99));
+        EXPECT_EQ(value.value, 99); // Original unchanged
+    }
+
+    EXPECT_EQ(alloc.num_allocated, 1);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeRValue) {
+    // Test U != T case with rvalue where U is convertible to T
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+
+        instance = ConvertibleToSimpleType(99);
+
+        EXPECT_EQ(*instance, T(99));
+    }
+
+    EXPECT_EQ(alloc.num_allocated, 1);
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeToValueless) {
+    // Test U != T case assigning to valueless instance
+    using T = SimpleType;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+
+        // Make instance valueless
+        indirect<T> temp(std::move(instance));
+        EXPECT_TRUE(instance.valueless_after_move());
+
+        // Assign convertible type to valueless instance - should construct new object
+        ConvertibleToSimpleType value(99);
+        instance = value;
+
+        EXPECT_FALSE(instance.valueless_after_move());
+        EXPECT_EQ(*instance, T(99));
+        EXPECT_EQ(value.value, 99); // Original unchanged
+    }
+
+    // Should have 2 allocations: initial + new construction for valueless target
+    EXPECT_EQ(alloc.num_allocated, 2);
     ASSERT_NO_LEAKS(alloc);
 }
