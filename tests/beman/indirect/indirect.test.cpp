@@ -14,6 +14,8 @@ enum AllocatorPropagationPolicy {
     PROPAGATE_ON_SWAP = 0b100,
 };
 
+static constexpr int DEFAULT_ALLOCATOR_ID = -1;
+
 template <typename T, AllocatorPropagationPolicy policy = PROPAGATE_NONE>
 struct CountingAllocator {
     using value_type                             = T;
@@ -45,7 +47,7 @@ struct CountingAllocator {
 
     size_type num_allocated   = 0;
     size_type num_deallocated = 0;
-    Id_type   id              = -1;
+    Id_type   id              = DEFAULT_ALLOCATOR_ID;
 };
 
 // making sure the allocators are consteval-able
@@ -1324,4 +1326,282 @@ TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeToValueless) {
     // Should have 2 allocations: initial + new construction for valueless target
     EXPECT_EQ(alloc.num_allocated, 2);
     ASSERT_NO_LEAKS(alloc);
+}
+
+// ========================================
+// Access Operator Tests
+// ========================================
+
+/**
+ * constexpr const T& operator*() const& noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: *p.
+ */
+TEST(IndirectTest, DereferenceOperatorConstLValue) {
+    using T = Composite;
+    const indirect<T> instance(std::in_place, 10, 20, 30);
+
+    const T& ref = *instance;
+    static_assert(std::is_const<std::remove_reference_t<decltype(ref)>>::value, "Should return const T&");
+
+    EXPECT_EQ(ref, T(10, 20, 30));
+    EXPECT_EQ(ref.a, 10);
+    EXPECT_EQ(ref.b, 20);
+    EXPECT_EQ(ref.c, 30);
+}
+
+/**
+ * constexpr T& operator*() & noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: *p.
+ */
+TEST(IndirectTest, DereferenceOperatorLValue) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    T& ref = *instance;
+    static_assert(!std::is_const<std::remove_reference_t<decltype(ref)>>::value, "Should return non-const T&");
+
+    EXPECT_EQ(ref, T(10, 20, 30));
+
+    // Verify we can modify through the reference
+    ref.a = 999;
+    EXPECT_EQ(*instance, T(999, 20, 30));
+}
+
+/**
+ * constexpr const T&& operator*() const&& noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: std::move(*p).
+ */
+TEST(IndirectTest, DereferenceOperatorConstRValue) {
+    using T = SimpleType;
+
+    const T&& ref = *indirect<T>(std::in_place, 42);
+    static_assert(std::is_const<std::remove_reference_t<decltype(ref)>>::value, "Should return const T&&");
+
+    EXPECT_EQ(ref, T(42));
+}
+
+/**
+ * constexpr T&& operator*() && noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: std::move(*p).
+ */
+TEST(IndirectTest, DereferenceOperatorRValue) {
+    using T = SimpleType;
+
+    T&& ref = *indirect<T>(std::in_place, 42);
+    static_assert(!std::is_const<std::remove_reference_t<decltype(ref)>>::value, "Should return non-const T&&");
+
+    EXPECT_EQ(ref, T(42));
+}
+
+/**
+ * constexpr const_pointer operator->() const noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: p.
+ */
+TEST(IndirectTest, ArrowOperatorConst) {
+    using T = Composite;
+    const indirect<T> instance(std::in_place, 10, 20, 30);
+
+    EXPECT_EQ(instance->a, 10);
+    EXPECT_EQ(instance->b, 20);
+    EXPECT_EQ(instance->c, 30);
+}
+
+/**
+ * constexpr pointer operator->() noexcept;
+ *
+ * Preconditions: *this is not valueless.
+ *
+ * Returns: p.
+ */
+TEST(IndirectTest, ArrowOperator) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    EXPECT_EQ(instance->a, 10);
+    EXPECT_EQ(instance->b, 20);
+    EXPECT_EQ(instance->c, 30);
+
+    // Verify we can modify through arrow operator
+    instance->a = 999;
+    EXPECT_EQ(instance->a, 999);
+    EXPECT_EQ(*instance, T(999, 20, 30));
+}
+
+// ========================================
+// valueless_after_move() Tests
+// ========================================
+
+/**
+ * constexpr bool valueless_after_move() const noexcept;
+ *
+ * Returns: true if *this is valueless, otherwise false.
+ */
+
+TEST(IndirectTest, ValuelessAfterMoveDefaultConstructed) {
+    using T = DefaultConstructible;
+    indirect<T> instance;
+
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveInPlaceConstructed) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveCopyConstructed) {
+    using T = Composite;
+    indirect<T> original(std::in_place, 10, 20, 30);
+    indirect<T> copy(original);
+
+    EXPECT_FALSE(original.valueless_after_move());
+    EXPECT_FALSE(copy.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveMoveConstructed) {
+    using T = Composite;
+    indirect<T> original(std::in_place, 10, 20, 30);
+
+    EXPECT_FALSE(original.valueless_after_move());
+
+    indirect<T> moved(std::move(original));
+
+    EXPECT_TRUE(original.valueless_after_move());
+    EXPECT_FALSE(moved.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveMoveAssigned) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    EXPECT_FALSE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+
+    target = std::move(source);
+
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveCopyAssignedFromValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make source valueless
+    indirect<T> temp(std::move(source));
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+
+    // Copy assign from valueless source
+    target = source;
+
+    EXPECT_TRUE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveCopyAssignedToValueless) {
+    using T = Composite;
+    indirect<T> source(std::in_place, 10, 20, 30);
+    indirect<T> target(std::in_place, 1, 2, 3);
+
+    // Make target valueless
+    indirect<T> temp(std::move(target));
+    EXPECT_FALSE(source.valueless_after_move());
+    EXPECT_TRUE(target.valueless_after_move());
+
+    // Copy assign to valueless target
+    target = source;
+
+    EXPECT_FALSE(source.valueless_after_move());
+    EXPECT_FALSE(target.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveForwardingAssignmentToValueless) {
+    using T = SimpleType;
+    indirect<T> instance(std::in_place, 42);
+
+    // Make instance valueless
+    indirect<T> temp(std::move(instance));
+    EXPECT_TRUE(instance.valueless_after_move());
+
+    // Forwarding assign to valueless instance
+    T value(99);
+    instance = value;
+
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveCopyConstructedFromValueless) {
+    using T = Composite;
+    indirect<T> original(std::in_place, 10, 20, 30);
+
+    // Make original valueless
+    indirect<T> temp(std::move(original));
+    EXPECT_TRUE(original.valueless_after_move());
+
+    // Copy construct from valueless
+    indirect<T> copy(original);
+
+    EXPECT_TRUE(original.valueless_after_move());
+    EXPECT_TRUE(copy.valueless_after_move());
+}
+
+TEST(IndirectTest, ValuelessAfterMoveMoveConstructedFromValueless) {
+    using T = Composite;
+    indirect<T> original(std::in_place, 10, 20, 30);
+
+    // Make original valueless
+    indirect<T> temp1(std::move(original));
+    EXPECT_TRUE(original.valueless_after_move());
+
+    // Move construct from valueless
+    indirect<T> temp2(std::move(original));
+
+    EXPECT_TRUE(original.valueless_after_move());
+    EXPECT_TRUE(temp2.valueless_after_move());
+}
+
+// ========================================
+// get_allocator() Tests
+// ========================================
+
+/**
+ * constexpr allocator_type get_allocator() const noexcept;
+ *
+ * Returns: alloc.
+ */
+
+TEST(IndirectTest, GetAllocatorWithPassedAllocator) {
+    using T = Composite;
+    CountingAllocator<T> alloc(100);
+    indirect<T>          instance(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+
+    EXPECT_EQ(instance.get_allocator().id, 100);
+}
+
+TEST(IndirectTest, GetAllocatorWithDefaultAllocator) {
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    auto alloc = instance.get_allocator();
+    EXPECT_EQ(alloc.id, DEFAULT_ALLOCATOR_ID);
 }
