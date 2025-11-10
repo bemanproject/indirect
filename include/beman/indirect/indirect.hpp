@@ -3,7 +3,9 @@
 #ifndef BEMAN_INDIRECT_IDENTITY_HPP
 #define BEMAN_INDIRECT_IDENTITY_HPP
 
+#include <initializer_list>
 #include <memory>
+#include <utility>
 
 namespace beman::indirect {
 template <class T, class Allocator = std::allocator<T>>
@@ -21,7 +23,7 @@ class indirect {
      *
      * Effects: Constructs an owned object of type T with an empty argument list, using the allocator alloc.
      */
-    explicit constexpr indirect();
+    explicit constexpr indirect() : indirect(std::allocator_arg, Allocator{}) {}
 
     /**
      * Mandates: is_default_constructible_v<T> is true.
@@ -29,7 +31,11 @@ class indirect {
      * Effects: alloc is direct-non-list-initialized with a.
      * Constructs an owned object of type T with an empty argument list, using the allocator alloc.
      */
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a);
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a) {
+        this->alloc = a;
+        this->p     = this->alloc.allocate(1);
+        new (this->p) value_type{};
+    }
 
     /**
      * Mandates: is_copy_constructible_v<T> is true.
@@ -39,7 +45,7 @@ class indirect {
      * If other is valueless, *this is valueless.
      * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
      */
-    constexpr indirect(const indirect& other);
+    constexpr indirect(const indirect& other) : indirect(std::allocator_arg, Allocator{}, other) {}
 
     /**
      * Mandates: is_copy_constructible_v<T> is true.
@@ -47,7 +53,16 @@ class indirect {
      * Effects: alloc is direct-non-list-initialized with a. If other is valueless, *this is valueless.
      * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
      */
-    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other);
+    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other) {
+        this->alloc = a;
+        if (other.p == nullptr) {
+            this->p = nullptr;
+            return;
+        }
+
+        this->p = this->alloc.allocate(1);
+        new (this->p) value_type(*other.p);
+    }
 
     /**
      * Effects: alloc is direct-non-list-initialized from std::move(other.alloc).
@@ -56,7 +71,12 @@ class indirect {
      *
      * Postconditions: other is valueless.
      */
-    constexpr indirect(indirect&& other) noexcept;
+    constexpr indirect(indirect&& other) noexcept {
+        this->alloc = std::move(other.alloc);
+        this->p     = other.p;
+        // Mark other as valueless
+        other.p = nullptr;
+    }
 
     /**
      * Mandates: If allocator_traits<Allocator>::is_always_equal::value is false then T is a complete type.
@@ -70,7 +90,23 @@ class indirect {
      */
     constexpr indirect(std::allocator_arg_t,
                        const Allocator& a,
-                       indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value);
+                       indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value) {
+        this->alloc = a;
+        if (other.p == nullptr) {
+            this->p = nullptr;
+            return;
+        }
+
+        if (this->alloc == other.alloc) {
+            this->p = other.p;
+            other.p = nullptr;
+            return;
+        }
+
+        this->p = this->alloc.allocate(1);
+        new (this->p) value_type(std::move(*other.p));
+        other.p = nullptr;
+    }
 
     /**
      * Constraints:
@@ -82,7 +118,7 @@ class indirect {
      * Effects: Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
      */
     template <class U = T>
-    explicit constexpr indirect(U&& u);
+    explicit constexpr indirect(U&& u) : indirect(std::allocator_arg, Allocator{}, std::forward(u)) {}
 
     /**
      * Constraints:
@@ -94,7 +130,8 @@ class indirect {
      * Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
      */
     template <class U = T>
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, U&& u);
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, U&& u)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward(u)) {}
 
     /**
      * Constraints:
@@ -104,7 +141,8 @@ class indirect {
      * Effects: Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
      */
     template <class... Us>
-    explicit constexpr indirect(std::in_place_t, Us&&... us);
+    explicit constexpr indirect(std::in_place_t, Us&&... us)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward(us)...) {}
 
     /**
      * Constraints: is_constructible_v<T, Us...> is true.
@@ -113,18 +151,23 @@ class indirect {
      * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
      */
     template <class... Us>
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us);
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) {
+        this->alloc = a;
+        this->p     = this->alloc.allocate(1);
+        new (this->p) value_type(std::forward(us)...);
+    }
 
     /**
      * Constraints:
      * • is_constructible_v<T, initializer_list<I>&, Us...> is true, and
      * • is_default_constructible_v<Allocator> is true.
      *
-     * Effects: Constructs an owned object of type T with the arguments ilist, std::forward<Us>(us)..., using
-the allocator alloc.
+     * Effects: Constructs an owned object of type T with the arguments ilist, std::forward<Us>(us)...,
+     * using the allocator alloc.
      */
     template <class I, class... Us>
-    explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+    explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::move(ilist), std::forward(us)...) {}
 
     /**
      * Constraints: is_constructible_v<T, initializer_list<I>&, Us...> is true.
@@ -134,7 +177,11 @@ the allocator alloc.
      */
     template <class I, class... Us>
     explicit constexpr indirect(
-        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us);
+        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
+        this->alloc = a;
+        this->p     = this->alloc.allocate(1);
+        new (this->p) value_type(std::move(ilist), std::forward(us)...);
+    }
 
     /**
      * Mandates: T is a complete type.
@@ -142,7 +189,10 @@ the allocator alloc.
      * Effects: If *this is not valueless, destroys the owned object
      * using allocator_traits<Allocator>::destroy and then the storage is deallocated.
      */
-    constexpr ~indirect();
+    constexpr ~indirect() {
+        if (this->p != nullptr)
+            this->alloc.deallocate(this->p, 1);
+    }
 
     /**
      * Mandates:
@@ -317,8 +367,8 @@ the allocator alloc.
     friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) /* ->synth-three-way-result<T, U> */;
 
   private:
-    pointer   p;                   // exposition only
-    Allocator alloc = Allocator(); // exposition only
+    Allocator alloc;
+    pointer   p;
 };
 
 template <class Value>
