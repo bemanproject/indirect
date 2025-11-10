@@ -73,6 +73,7 @@ class indirect {
      */
     constexpr indirect(indirect&& other) noexcept {
         this->alloc = std::move(other.alloc);
+        // takes ownership directly
         this->p     = other.p;
         // Mark other as valueless
         other.p = nullptr;
@@ -92,19 +93,23 @@ class indirect {
                        const Allocator& a,
                        indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value) {
         this->alloc = a;
-        if (other.p == nullptr) {
-            this->p = nullptr;
-            return;
-        }
-
+        // Taking over ownership
         if (this->alloc == other.alloc) {
             this->p = other.p;
             other.p = nullptr;
             return;
         }
 
+        // other is valueless
+        if (other.p == nullptr) {
+            this->p = nullptr;
+            return;
+        }
+
+        // Move constructing
         this->p = this->alloc.allocate(1);
         new (this->p) value_type(std::move(*other.p));
+        other.alloc.deallocate(other.p, 1);
         other.p = nullptr;
     }
 
