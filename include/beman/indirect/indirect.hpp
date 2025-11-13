@@ -73,7 +73,7 @@ class indirect {
         // takes ownership directly
         this->p = other.p;
         // Mark other as valueless
-        other.disengage();
+        other.disengage<DisengagePolicy::NO_DEALLOC>();
     }
 
     /**
@@ -105,7 +105,7 @@ class indirect {
 
         // Move constructing
         engage(std::move(*other));
-        other.disengage();
+        other.disengage<DisengagePolicy::DEALLOC>();
     }
 
     /**
@@ -202,10 +202,7 @@ class indirect {
      * Effects: If *this is not valueless, destroys the owned object
      * using allocator_traits<Allocator>::destroy and then the storage is deallocated.
      */
-    constexpr ~indirect() {
-        if (this->p != nullptr)
-            disengage();
-    }
+    constexpr ~indirect() { disengage<DisengagePolicy::CHECK>(); }
 
     /**
      * Mandates:
@@ -233,7 +230,42 @@ class indirect {
      * exception is thrown during the call to T's copy assignment, the state of its contained value is as defined by
      * the exception safety guarantee of T's copy assignment.
      */
-    constexpr indirect& operator=(const indirect& other);
+    constexpr indirect& operator=(const indirect& other) {
+        // Review and test for exception requirement
+        if (this == std::addressof(other))
+            return;
+
+        //   1. The allocator needs updating if
+        //      allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
+        auto alloc_update = [&]() {
+            if constexpr (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
+                this->alloc = other.alloc;
+            }
+        };
+        //   2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
+        //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+        if (other.valueless_after_move()) {
+            disengage<DisengagePolicy::CHECK>();
+            alloc_update();
+            return;
+        }
+        //   3. Otherwise, if alloc == other.alloc is true and *this is not valueless, equivalent to **this =
+        //   *other.
+        if (this->alloc == other.alloc && !this->valueless_after_move()) {
+            // TODO: is alloc assignment needed?
+            alloc_update();
+            **this = *other;
+            return;
+        }
+        //   4. Otherwise a new owned object is constructed in *this using allocator_traits<Allocator>::construct
+        //      with the owned object from other as the argument,
+        //      using either the allocator in *this or the allocator in other if the allocator needs updating.
+        //   5. The previously owned object in *this, if any,
+        //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+        disengage<DisengagePolicy::CHECK>();
+        alloc_update();
+        engage(*other);
+    }
 
     /**
      * Mandates: is_copy_constructible_t<T> is true.
@@ -385,11 +417,12 @@ class indirect {
     friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) /* ->synth-three-way-result<T, U> */;
 
   private:
-    enum class DisengagePolicy { DEALLOC, NO_DEALLOC };
+    enum class DisengagePolicy { DEALLOC, NO_DEALLOC, CHECK };
 
     template <DisengagePolicy dealloc_policy = indirect::DisengagePolicy::DEALLOC>
     void disengage() {
-        if constexpr (dealloc_policy == DisengagePolicy::DEALLOC) {
+        if (dealloc_policy == DisengagePolicy::DEALLOC ||
+            (dealloc_policy == DisengagePolicy::CHECK && this->valueless_after_move())) {
             std::allocator_traits<Allocator>::destroy(this->alloc, this->p);
             std::allocator_traits<Allocator>::deallocate(this->alloc, this->p, 1);
         }
