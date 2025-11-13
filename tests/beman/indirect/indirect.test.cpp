@@ -76,7 +76,7 @@ struct SimpleType {
     int value;
     explicit SimpleType(int v) : value(v) {}
     SimpleType& operator=(const SimpleType&) = default;
-    bool operator==(const SimpleType& other) const { return value == other.value; }
+    bool        operator==(const SimpleType& other) const { return value == other.value; }
 };
 
 struct ConvertibleToSimpleType {
@@ -637,7 +637,7 @@ TEST(IndirectTest, InitializerListConstructorWithAllocatorAndArgs) {
  * If an exception is thrown during the call to T's copy assignment,
  * the state of its contained value is as defined by the exception safety guarantee of T's copy assignment.
  *
- * TODO: Test for exception behaivor
+ * TODO: Test for exception behavior
  */
 
 TEST(IndirectTest, CopyAssignmentBasic) {
@@ -838,7 +838,7 @@ TEST(IndirectTest, CopyAssignmentDifferentAllocatorsConstructsNewObject) {
 
         // After assignment: target's allocator should have allocated another object
         EXPECT_EQ(target.get_allocator().num_allocated, 2);   // New allocation happened
-        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destoried
+        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destroyed
         EXPECT_EQ(*target, T(10, 20, 30));
         EXPECT_EQ(*source, T(10, 20, 30));
     }
@@ -1272,7 +1272,7 @@ TEST(IndirectTest, ForwardingAssignmentFromConvertibleType) {
     CountingAllocator<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T>             instance(std::allocator_arg, alloc, std::in_place, 42);
         ConvertibleToSimpleType value(99);
 
         instance = value;

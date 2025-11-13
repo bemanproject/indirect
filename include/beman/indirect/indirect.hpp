@@ -74,7 +74,7 @@ class indirect {
     constexpr indirect(indirect&& other) noexcept {
         this->alloc = std::move(other.alloc);
         // takes ownership directly
-        this->p     = other.p;
+        this->p = other.p;
         // Mark other as valueless
         other.p = nullptr;
     }
@@ -220,10 +220,10 @@ class indirect {
      *
      * Returns: A reference to *this.
      *
-     * Remarks: If any exception is thrown, the result of the expression this->valueless_after_move() remains unchanged.
-     * If an exception is thrown during the call to T's selected copy constructor, no effect.
-     * If an exception is thrown during the call to T's copy assignment,
-     * the state of its contained value is as defined by the exception safety guarantee of T's copy assignment.
+     * Remarks: If any exception is thrown, the result of the expression this->valueless_after_move() remains
+     * unchanged. If an exception is thrown during the call to T's selected copy constructor, no effect. If an
+     * exception is thrown during the call to T's copy assignment, the state of its contained value is as defined by
+     * the exception safety guarantee of T's copy assignment.
      */
     constexpr indirect& operator=(const indirect& other);
 
@@ -281,7 +281,7 @@ class indirect {
      *
      * Returns: *p.
      */
-    constexpr T&        operator*() & noexcept;
+    constexpr T& operator*() & noexcept;
 
     /**
      * Preconditions: *this is not valueless.
@@ -295,7 +295,7 @@ class indirect {
      *
      * Returns: std::move(*p).
      */
-    constexpr T&&       operator*() && noexcept;
+    constexpr T&& operator*() && noexcept;
 
     /**
      * Preconditions: *this is not valueless.
@@ -309,7 +309,7 @@ class indirect {
      *
      * Returns: p.
      */
-    constexpr pointer       operator->() noexcept;
+    constexpr pointer operator->() noexcept;
 
     /**
      * Returns: true if *this is valueless, otherwise false.
@@ -332,8 +332,9 @@ class indirect {
      * Otherwise, the allocators are not swapped.
      * [Note: Does not call swap on the owned objects directly. –end note]
      */
-    constexpr void swap(indirect& other) noexcept(std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
-                                                   std::allocator_traits<Allocator>::is_always_equal::value);
+    constexpr void
+    swap(indirect& other) noexcept(std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
+                                   std::allocator_traits<Allocator>::is_always_equal::value);
 
     /**
      * Effects: Equivalent to lhs.swap(rhs).
@@ -363,7 +364,8 @@ class indirect {
      * otherwise synth-three-way(*lhs, *rhs).
      */
     template <class U, class AA>
-    friend constexpr auto operator<=>(const indirect& lhs, const indirect<U, AA>& rhs) /* ->synth-three-way-result<T, U> */;
+    friend constexpr auto operator<=>(const indirect&        lhs,
+                                      const indirect<U, AA>& rhs) /* ->synth-three-way-result<T, U> */;
 
     /**
      * Returns: If lhs is valueless, strong_ordering::less; otherwise synth-three-way(*lhs, rhs).
