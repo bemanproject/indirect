@@ -34,8 +34,7 @@ class indirect {
      */
     explicit constexpr indirect(std::allocator_arg_t, const Allocator& a) {
         this->alloc = a;
-        this->p     = this->alloc.allocate(1);
-        new (this->p) value_type{};
+        engage();
     }
 
     /**
@@ -56,13 +55,10 @@ class indirect {
      */
     constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other) {
         this->alloc = a;
-        if (other.p == nullptr) {
-            this->p = nullptr;
-            return;
-        }
-
-        this->p = this->alloc.allocate(1);
-        new (this->p) value_type(*other.p);
+        if (other.valueless_after_move())
+            this->disengage<DisengagePolicy::NO_DEALLOC>();
+        else
+            engage(*other);
     }
 
     /**
@@ -77,7 +73,7 @@ class indirect {
         // takes ownership directly
         this->p = other.p;
         // Mark other as valueless
-        other.p = nullptr;
+        other.disengage();
     }
 
     /**
@@ -94,24 +90,22 @@ class indirect {
                        const Allocator& a,
                        indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value) {
         this->alloc = a;
-        // Taking over ownership
+        // Shortcut: Taking over ownership directly
         if (this->alloc == other.alloc) {
             this->p = other.p;
-            other.p = nullptr;
+            other.disengage<DisengagePolicy::NO_DEALLOC>();
             return;
         }
 
         // other is valueless
-        if (other.p == nullptr) {
-            this->p = nullptr;
+        if (other.valueless_after_move()) {
+            this->disengage<DisengagePolicy::NO_DEALLOC>();
             return;
         }
 
         // Move constructing
-        this->p = this->alloc.allocate(1);
-        new (this->p) value_type(std::move(*other.p));
-        other.alloc.deallocate(other.p, 1);
-        other.p = nullptr;
+        engage(std::move(*other));
+        other.disengage();
     }
 
     /**
@@ -170,8 +164,7 @@ class indirect {
         requires(std::is_constructible_v<T, Us...>)
     {
         this->alloc = a;
-        this->p     = this->alloc.allocate(1);
-        new (this->p) value_type(std::forward<Us>(us)...);
+        engage(std::forward<Us>(us)...);
     }
 
     /**
@@ -200,8 +193,7 @@ class indirect {
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
     {
         this->alloc = a;
-        this->p     = this->alloc.allocate(1);
-        new (this->p) value_type(std::move(ilist), std::forward<Us>(us)...);
+        engage(std::move(ilist), std::forward<Us>(us)...);
     }
 
     /**
@@ -212,7 +204,7 @@ class indirect {
      */
     constexpr ~indirect() {
         if (this->p != nullptr)
-            this->alloc.deallocate(this->p, 1);
+            disengage();
     }
 
     /**
@@ -333,7 +325,7 @@ class indirect {
     /**
      * Returns: true if *this is valueless, otherwise false.
      */
-    constexpr bool valueless_after_move() const noexcept;
+    constexpr bool valueless_after_move() const noexcept { return this->p == nullptr; }
 
     /**
      * Returns: alloc.
@@ -393,6 +385,24 @@ class indirect {
     friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) /* ->synth-three-way-result<T, U> */;
 
   private:
+    enum class DisengagePolicy { DEALLOC, NO_DEALLOC };
+
+    template <DisengagePolicy dealloc_policy = indirect::DisengagePolicy::DEALLOC>
+    void disengage() {
+        if constexpr (dealloc_policy == DisengagePolicy::DEALLOC) {
+            std::allocator_traits<Allocator>::destroy(this->alloc, this->p);
+            std::allocator_traits<Allocator>::deallocate(this->alloc, this->p, 1);
+        }
+        this->p = nullptr;
+    }
+
+    // precondition: no ownership
+    template <class... Args>
+    void engage(Args&&... args) {
+        this->p = std::allocator_traits<Allocator>::allocate(this->alloc, this->p, 1);
+        std::allocator_traits<Allocator>::construct(this->alloc, this->p, std::forward<Args>(args)...);
+    }
+
     Allocator alloc;
     pointer   p;
 };
