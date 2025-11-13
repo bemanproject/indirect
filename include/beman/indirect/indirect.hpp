@@ -32,10 +32,7 @@ class indirect {
      * Effects: alloc is direct-non-list-initialized with a.
      * Constructs an owned object of type T with an empty argument list, using the allocator alloc.
      */
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a) {
-        this->alloc = a;
-        engage();
-    }
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a) : alloc(a), p(allocate_and_construct()) {}
 
     /**
      * Mandates: is_copy_constructible_v<T> is true.
@@ -53,12 +50,13 @@ class indirect {
      * Effects: alloc is direct-non-list-initialized with a. If other is valueless, *this is valueless.
      * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
      */
-    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other) {
-        this->alloc = a;
-        if (other.valueless_after_move())
-            this->disengage<DisengagePolicy::NO_DEALLOC>();
-        else
-            engage(*other);
+    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other) : alloc(a) {
+        if (other.valueless_after_move()) {
+            this->p = nullptr;
+            return;
+        }
+
+        this->p = allocate_and_construct(*other);
     }
 
     /**
@@ -73,7 +71,7 @@ class indirect {
         // takes ownership directly
         this->p = other.p;
         // Mark other as valueless
-        other.disengage<DisengagePolicy::NO_DEALLOC>();
+        other.p = nullptr;
     }
 
     /**
@@ -88,24 +86,39 @@ class indirect {
      */
     constexpr indirect(std::allocator_arg_t,
                        const Allocator& a,
-                       indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value) {
-        this->alloc = a;
-        // Shortcut: Taking over ownership directly
+                       indirect&&       other) noexcept(std::allocator_traits<Allocator>::is_always_equal::value)
+        : alloc(a) {
+        // Shortcut 1: Taking over ownership directly
         if (this->alloc == other.alloc) {
             this->p = other.p;
-            other.disengage<DisengagePolicy::NO_DEALLOC>();
+            other.p = nullptr;
             return;
         }
 
-        // other is valueless
+        // Shortcut 2: other is valueless
         if (other.valueless_after_move()) {
-            this->disengage<DisengagePolicy::NO_DEALLOC>();
+            this->p = nullptr;
             return;
         }
 
         // Move constructing
-        engage(std::move(*other));
-        other.disengage<DisengagePolicy::DEALLOC>();
+        scope_exit post_condition([&other]() {
+            // Post condition: other must be set to valueless regardless of exception state
+            // Here destory or deallocate could throw.
+            scope_exit _set_valueless([&other]() { other.p = nullptr; });
+            // valueless check done already
+            other.unchecked_destroy_and_deallocate();
+        });
+
+        this->p = allocate_ptr();
+
+        // We have to rewind allocation if there's exception here.
+        scope_exit _must_not_leak([this]() { this->deallocate(); });
+        this->construct(std::move(*other));
+        _must_not_leak.release();
+
+        // satisify post condition
+        post_condition.invoke();
     }
 
     /**
@@ -164,7 +177,7 @@ class indirect {
         requires(std::is_constructible_v<T, Us...>)
     {
         this->alloc = a;
-        engage(std::forward<Us>(us)...);
+        this->p     = allocate_and_construct(std::forward<Us>(us)...);
     }
 
     /**
@@ -193,7 +206,7 @@ class indirect {
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
     {
         this->alloc = a;
-        engage(std::move(ilist), std::forward<Us>(us)...);
+        this->p     = allocate_and_construct(std::move(ilist), std::forward<Us>(us)...);
     }
 
     /**
@@ -202,7 +215,7 @@ class indirect {
      * Effects: If *this is not valueless, destroys the owned object
      * using allocator_traits<Allocator>::destroy and then the storage is deallocated.
      */
-    constexpr ~indirect() { disengage<DisengagePolicy::CHECK>(); }
+    constexpr ~indirect() { checked_destory_and_deallocate(); }
 
     /**
      * Mandates:
@@ -231,9 +244,8 @@ class indirect {
      * the exception safety guarantee of T's copy assignment.
      */
     constexpr indirect& operator=(const indirect& other) {
-        // Review and test for exception requirement
         if (this == std::addressof(other))
-            return;
+            return *this;
 
         //   1. The allocator needs updating if
         //      allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
@@ -245,9 +257,10 @@ class indirect {
         //   2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
         if (other.valueless_after_move()) {
-            disengage<DisengagePolicy::CHECK>();
+            checked_destory_and_deallocate();
             alloc_update();
-            return;
+            this->p = nullptr;
+            return *this;
         }
         //   3. Otherwise, if alloc == other.alloc is true and *this is not valueless, equivalent to **this =
         //   *other.
@@ -255,16 +268,17 @@ class indirect {
             // TODO: is alloc assignment needed?
             alloc_update();
             **this = *other;
-            return;
+            return *this;
         }
         //   4. Otherwise a new owned object is constructed in *this using allocator_traits<Allocator>::construct
         //      with the owned object from other as the argument,
         //      using either the allocator in *this or the allocator in other if the allocator needs updating.
         //   5. The previously owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
-        disengage<DisengagePolicy::CHECK>();
+        checked_destory_and_deallocate();
         alloc_update();
-        engage(*other);
+        this->p = allocate_and_construct(*other);
+        return *this;
     }
 
     /**
@@ -417,23 +431,76 @@ class indirect {
     friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) /* ->synth-three-way-result<T, U> */;
 
   private:
-    enum class DisengagePolicy { DEALLOC, NO_DEALLOC, CHECK };
+    // Shorthand functions to allocator_traits:
 
-    template <DisengagePolicy dealloc_policy = indirect::DisengagePolicy::DEALLOC>
-    void disengage() {
-        if (dealloc_policy == DisengagePolicy::DEALLOC ||
-            (dealloc_policy == DisengagePolicy::CHECK && this->valueless_after_move())) {
-            std::allocator_traits<Allocator>::destroy(this->alloc, this->p);
-            std::allocator_traits<Allocator>::deallocate(this->alloc, this->p, 1);
-        }
-        this->p = nullptr;
+    // Allocate a pointer to a storage using this->alloc
+    [[nodiscard]] inline constexpr pointer allocate_ptr() {
+        return std::allocator_traits<Allocator>::allocate(this->alloc, 1);
     }
 
-    // precondition: no ownership
+    // Construct object at this->p using this->alloc as allocator and args as arguments
     template <class... Args>
-    void engage(Args&&... args) {
-        this->p = std::allocator_traits<Allocator>::allocate(this->alloc, this->p, 1);
+    inline constexpr void construct(Args&&... args) {
         std::allocator_traits<Allocator>::construct(this->alloc, this->p, std::forward<Args>(args)...);
+    }
+
+    // Destories this->p using this->alloc
+    inline constexpr void destory() { std::allocator_traits<Allocator>::destroy(this->alloc, this->p); }
+    // Deallocates this->p using this->alloc
+    inline constexpr void deallocate() { std::allocator_traits<Allocator>::deallocate(this->alloc, this->p, 1); }
+
+    // Exception safe utils and destroy+deallocate/ allocate+construct helpers:
+
+    template <typename lambda>
+    struct scope_exit {
+        explicit scope_exit(lambda&& f_) : f(f_) {}
+        ~scope_exit() { invoke(); }
+        constexpr void release() noexcept { released = true; }
+        constexpr void invoke() {
+            if (!released)
+                f();
+            release();
+        }
+
+      private:
+        lambda f;
+        bool   released = false;
+    };
+
+    // Disengage ownership if exist, same postcondition as the unchecked counterpart
+    constexpr void checked_destory_and_deallocate() {
+        if (this->p != nullptr)
+            unchecked_destroy_and_deallocate();
+    }
+
+    // Disengage ownership
+    //
+    // precondition: is not in valueless state
+    // postcondition: owned object is deallocated
+    //
+    // throws when contained object's destritor or deallocate throws
+    // postcondition is guaranteed even when destroy throws
+    constexpr void unchecked_destroy_and_deallocate() {
+        // must deallocate whatever when we exit this function
+        scope_exit _must_deallocate([this]() { this->deallocate(); });
+        // destroy may throw
+        destory();
+    }
+
+    // Return a pointer to a new object constructed using this->alloc Allocator and args...
+    //
+    // Note: pointer this->p is not updated.
+    // Exception guarantee: no memory leak if construct throws
+    template <class... Args>
+    pointer allocate_and_construct(Args&&... args) {
+        auto target = std::allocator_traits<Allocator>::allocate(this->alloc, 1);
+        try {
+            std::allocator_traits<Allocator>::construct(this->alloc, target, std::forward<Args>(args)...);
+        } catch (...) {
+            std::allocator_traits<Allocator>::deallocate(this->alloc, target, 1);
+            throw;
+        }
+        return target;
     }
 
     Allocator alloc;

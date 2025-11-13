@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// TODO: Error checking
+
 #include <beman/indirect/indirect.hpp>
 
 #include <cstddef>
