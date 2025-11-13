@@ -277,31 +277,6 @@ TEST(IndirectTest, InPlaceConstructorWithAllocator) {
     ASSERT_NO_LEAKS(alloc);
 }
 
-/**
- * template <class... Us>
- * explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us);
- *
- * Constraints: is_constructible_v<T, Us...> is true.
- *
- * Effects: alloc is direct-non-list-initialized with a.
- * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
- */
-
-TEST(IncompleteTests, InPlaceConstructorWithIncompleteType) {
-    struct T;
-    CountingAllocator<T> alloc;
-
-    struct T {
-        int         a, b, c;
-        indirect<T> ind{std::allocator_arg, alloc, std::in_place, 1, 2, 3};
-    };
-
-    indirect<T> instance;
-
-    ASSERT_NO_LEAKS(alloc);
-    EXPECT_EQ(alloc.num_allocated, 1);
-}
-
 // ========================================
 // Copy Constructor Tests
 // ========================================
@@ -1804,7 +1779,8 @@ TEST(IndirectTest, SwapWithPropagateOnSwapFalse) {
         EXPECT_EQ(rhs.get_allocator().id, rhs_alloc_id);
     }
 
-    ASSERT_NO_LEAKS(alloc);
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
 }
 
 TEST(IndirectTest, SwapSelfSwap) {

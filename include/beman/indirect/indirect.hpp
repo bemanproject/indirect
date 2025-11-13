@@ -5,6 +5,7 @@
 
 #include <initializer_list>
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 namespace beman::indirect {
@@ -123,7 +124,12 @@ class indirect {
      * Effects: Constructs an owned object of type T with std::forward<U>(u), using the allocator alloc.
      */
     template <class U = T>
-    explicit constexpr indirect(U&& u) : indirect(std::allocator_arg, Allocator{}, std::forward(u)) {}
+    explicit constexpr indirect(U&& u)
+        requires((!std::is_same_v<std::remove_cvref_t<U>, indirect>) &&        //
+                 (!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t>) && //
+                 std::is_constructible_v<T, U> &&                              //
+                 std::is_default_constructible_v<Allocator>)
+        : indirect(std::allocator_arg, Allocator{}, std::forward<U>(u)) {}
 
     /**
      * Constraints:
@@ -136,7 +142,10 @@ class indirect {
      */
     template <class U = T>
     explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, U&& u)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward(u)) {}
+        requires((!std::is_same_v<std::remove_cvref_t<U>, indirect>) &&        //
+                 (!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t>) && //
+                 std::is_constructible_v<T, U>)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward<U>(u)) {}
 
     /**
      * Constraints:
@@ -147,7 +156,8 @@ class indirect {
      */
     template <class... Us>
     explicit constexpr indirect(std::in_place_t, Us&&... us)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward(us)...) {}
+        requires(std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward<Us>(us)...) {}
 
     /**
      * Constraints: is_constructible_v<T, Us...> is true.
@@ -156,10 +166,12 @@ class indirect {
      * Constructs an owned object of type T with std::forward<Us>(us)..., using the allocator alloc.
      */
     template <class... Us>
-    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) {
+    explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us)
+        requires(std::is_constructible_v<T, Us...>)
+    {
         this->alloc = a;
         this->p     = this->alloc.allocate(1);
-        new (this->p) value_type(std::forward(us)...);
+        new (this->p) value_type(std::forward<Us>(us)...);
     }
 
     /**
@@ -172,7 +184,9 @@ class indirect {
      */
     template <class I, class... Us>
     explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::move(ilist), std::forward(us)...) {}
+        requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
+                 std::is_default_constructible_v<Allocator>)
+        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::move(ilist), std::forward<Us>(us)...) {}
 
     /**
      * Constraints: is_constructible_v<T, initializer_list<I>&, Us...> is true.
@@ -182,10 +196,12 @@ class indirect {
      */
     template <class I, class... Us>
     explicit constexpr indirect(
-        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
+        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
+        requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
+    {
         this->alloc = a;
         this->p     = this->alloc.allocate(1);
-        new (this->p) value_type(std::move(ilist), std::forward(us)...);
+        new (this->p) value_type(std::move(ilist), std::forward<Us>(us)...);
     }
 
     /**
@@ -267,6 +283,9 @@ class indirect {
      * Returns: A reference to *this.
      */
     template <class U = T>
+        requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> && //
+                 std::is_constructible_v<T, U> &&                     //
+                 std::is_assignable_v<T&, U>)
     constexpr indirect& operator=(U&& u);
 
     /**
