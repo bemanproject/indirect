@@ -1605,3 +1605,251 @@ TEST(IndirectTest, GetAllocatorWithDefaultAllocator) {
     auto alloc = instance.get_allocator();
     EXPECT_EQ(alloc.id, DEFAULT_ALLOCATOR_ID);
 }
+
+// ========================================
+// swap() Tests
+// ========================================
+
+/**
+ * constexpr void swap(indirect& other) noexcept(
+ *     allocator_traits<Allocator>::propagate_on_container_swap::value ||
+ *     allocator_traits<Allocator>::is_always_equal::value);
+ *
+ * Preconditions: If allocator_traits<Allocator>::propagate_on_container_swap::value is true,
+ * then Allocator meets the Cpp17Swappable requirements.
+ * Otherwise get_allocator() == other.get_allocator() is true.
+ *
+ * Effects: Swaps the states of *this and other, exchanging owned objects or valueless states.
+ * If allocator_traits<Allocator>::propagate_on_container_swap::value is true,
+ * then the allocators of *this and other are exchanged by calling swap as described in [swappable.requirements].
+ * Otherwise, the allocators are not swapped.
+ * [Note: Does not call swap on the owned objects directly. –end note]
+ */
+
+TEST(IndirectTest, SwapBasic) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    lhs.swap(rhs);
+
+    EXPECT_EQ(*lhs, T(40, 50, 60));
+    EXPECT_EQ(*rhs, T(10, 20, 30));
+    EXPECT_FALSE(lhs.valueless_after_move());
+    EXPECT_FALSE(rhs.valueless_after_move());
+}
+
+TEST(IndirectTest, SwapNonValuelessWithNonValueless) {
+    // Test swapping two non-valueless objects
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+
+        EXPECT_FALSE(lhs.valueless_after_move());
+        EXPECT_FALSE(rhs.valueless_after_move());
+
+        lhs.swap(rhs);
+
+        EXPECT_EQ(*lhs, T(7, 8, 9));
+        EXPECT_EQ(*rhs, T(1, 2, 3));
+        EXPECT_FALSE(lhs.valueless_after_move());
+        EXPECT_FALSE(rhs.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, SwapNonValuelessWithValueless) {
+    // Test swapping non-valueless with valueless
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+
+        // Make rhs valueless
+        indirect<T> temp(std::move(rhs));
+        EXPECT_FALSE(lhs.valueless_after_move());
+        EXPECT_TRUE(rhs.valueless_after_move());
+
+        lhs.swap(rhs);
+
+        // After swap: lhs should be valueless, rhs should have the original lhs value
+        EXPECT_TRUE(lhs.valueless_after_move());
+        EXPECT_FALSE(rhs.valueless_after_move());
+        EXPECT_EQ(*rhs, T(1, 2, 3));
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, SwapValuelessWithNonValueless) {
+    // Test swapping valueless with non-valueless
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+
+        // Make lhs valueless
+        indirect<T> temp(std::move(lhs));
+        EXPECT_TRUE(lhs.valueless_after_move());
+        EXPECT_FALSE(rhs.valueless_after_move());
+
+        lhs.swap(rhs);
+
+        // After swap: lhs should have the original rhs value, rhs should be valueless
+        EXPECT_FALSE(lhs.valueless_after_move());
+        EXPECT_TRUE(rhs.valueless_after_move());
+        EXPECT_EQ(*lhs, T(7, 8, 9));
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, SwapValuelessWithValueless) {
+    // Test swapping two valueless objects
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+
+        // Make both valueless
+        indirect<T> temp1(std::move(lhs));
+        indirect<T> temp2(std::move(rhs));
+        EXPECT_TRUE(lhs.valueless_after_move());
+        EXPECT_TRUE(rhs.valueless_after_move());
+
+        lhs.swap(rhs);
+
+        // After swap: both should still be valueless
+        EXPECT_TRUE(lhs.valueless_after_move());
+        EXPECT_TRUE(rhs.valueless_after_move());
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, SwapWithPropagateOnSwapTrue) {
+    // Test that allocators are swapped when propagate_on_container_swap is true
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_ON_SWAP>;
+
+    static_assert(std::allocator_traits<Alloc>::propagate_on_container_swap::value);
+
+    Alloc::Id_type lhs_alloc_id = 100, rhs_alloc_id = 200;
+
+    Alloc alloc1(lhs_alloc_id);
+    Alloc alloc2(rhs_alloc_id);
+
+    {
+        indirect<T, Alloc> lhs(std::allocator_arg, alloc1, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> rhs(std::allocator_arg, alloc2, std::in_place, 7, 8, 9);
+
+        // Before swap, allocators are different
+        EXPECT_NE(lhs.get_allocator(), rhs.get_allocator());
+        EXPECT_EQ(lhs.get_allocator().id, lhs_alloc_id);
+        EXPECT_EQ(rhs.get_allocator().id, rhs_alloc_id);
+
+        lhs.swap(rhs);
+
+        // After swap with propagate_on_container_swap=true,
+        // allocators should be swapped along with the objects
+        EXPECT_EQ(*lhs, T(7, 8, 9));
+        EXPECT_EQ(*rhs, T(1, 2, 3));
+        EXPECT_EQ(lhs.get_allocator().id, rhs_alloc_id);
+        EXPECT_EQ(rhs.get_allocator().id, lhs_alloc_id);
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+TEST(IndirectTest, SwapWithPropagateOnSwapFalse) {
+    // Test that allocators are NOT swapped when propagate_on_container_swap is false
+    // In this case, the allocators must be equal (same allocator)
+    using T     = Composite;
+    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+
+    static_assert(!std::allocator_traits<Alloc>::propagate_on_container_swap::value);
+
+    Alloc::Id_type lhs_alloc_id = 100, rhs_alloc_id = 200;
+
+    Alloc alloc1(lhs_alloc_id);
+    Alloc alloc2(rhs_alloc_id);
+
+    {
+        indirect<T, Alloc> lhs(std::allocator_arg, alloc1, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> rhs(std::allocator_arg, alloc2, std::in_place, 7, 8, 9);
+
+        // Both use same allocator
+        EXPECT_NE(lhs.get_allocator(), rhs.get_allocator());
+        EXPECT_EQ(lhs.get_allocator().id, lhs_alloc_id);
+        EXPECT_EQ(rhs.get_allocator().id, rhs_alloc_id);
+
+        lhs.swap(rhs);
+
+        // After swap with propagate_on_container_swap=false,
+        // allocators should remain unchanged
+        EXPECT_EQ(*lhs, T(7, 8, 9));
+        EXPECT_EQ(*rhs, T(1, 2, 3));
+        EXPECT_EQ(lhs.get_allocator().id, lhs_alloc_id);
+        EXPECT_EQ(rhs.get_allocator().id, rhs_alloc_id);
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
+
+TEST(IndirectTest, SwapSelfSwap) {
+    // Test swapping an object with itself
+    using T = Composite;
+    indirect<T> instance(std::in_place, 10, 20, 30);
+
+    instance.swap(instance);
+
+    EXPECT_EQ(*instance, T(10, 20, 30));
+    EXPECT_FALSE(instance.valueless_after_move());
+}
+
+TEST(IndirectTest, SwapFreeFunction) {
+    // Test the free function swap(lhs, rhs)
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    using std::swap;
+    swap(lhs, rhs);
+
+    EXPECT_EQ(*lhs, T(40, 50, 60));
+    EXPECT_EQ(*rhs, T(10, 20, 30));
+    EXPECT_FALSE(lhs.valueless_after_move());
+    EXPECT_FALSE(rhs.valueless_after_move());
+}
+
+TEST(IndirectTest, SwapNoAllocation) {
+    // Test that swap does not allocate or deallocate memory
+    using T = Composite;
+    CountingAllocator<T> alloc;
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+
+        lhs.swap(rhs);
+
+        // Swap should not allocate or deallocate
+        EXPECT_EQ(alloc.num_allocated, 2);
+        EXPECT_EQ(alloc.num_deallocated, 0);
+        EXPECT_EQ(*lhs, T(7, 8, 9));
+        EXPECT_EQ(*rhs, T(1, 2, 3));
+    }
+
+    ASSERT_NO_LEAKS(alloc);
+}
