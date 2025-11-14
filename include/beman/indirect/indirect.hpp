@@ -238,10 +238,11 @@ class indirect {
      *
      * Returns: A reference to *this.
      *
-     * Remarks: If any exception is thrown, the result of the expression this->valueless_after_move() remains
-     * unchanged. If an exception is thrown during the call to T's selected copy constructor, no effect. If an
-     * exception is thrown during the call to T's copy assignment, the state of its contained value is as defined by
-     * the exception safety guarantee of T's copy assignment.
+     * Remarks:
+     * - If any exception is thrown, the result of the expression this->valueless_after_move() remains unchanged.
+     * - If an exception is thrown during the call to T's selected copy constructor, no effect.
+     * - If an exception is thrown during the call to T's copy assignment, the state of its contained value is as
+     *   defined by the exception safety guarantee of T's copy assignment.
      */
     constexpr indirect& operator=(const indirect& other) {
         if (this == std::addressof(other))
@@ -249,8 +250,9 @@ class indirect {
 
         //   1. The allocator needs updating if
         //      allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
-        auto alloc_update = [&]() {
-            if constexpr (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
+        constexpr auto need_update  = std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value;
+        auto           alloc_update = [&]() {
+            if (need_update) {
                 this->alloc = other.alloc;
             }
         };
@@ -265,8 +267,6 @@ class indirect {
         //   3. Otherwise, if alloc == other.alloc is true and *this is not valueless, equivalent to **this =
         //   *other.
         if (this->alloc == other.alloc && !this->valueless_after_move()) {
-            // TODO: is alloc assignment needed?
-            alloc_update();
             **this = *other;
             return *this;
         }
@@ -275,9 +275,13 @@ class indirect {
         //      using either the allocator in *this or the allocator in other if the allocator needs updating.
         //   5. The previously owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
-        checked_destroy_and_deallocate();
+
+        // Needed to fullfill exception guarantee: If an exception is thrown during the call to T's selected copy
+        // constructor, no effect.
+        auto new_ptr = need_update ? other.allocate_and_construct(*other) : this->allocate_and_construct(*other);
+        this->checked_destroy_and_deallocate();
         alloc_update();
-        this->p = allocate_and_construct(*other);
+        this->p = new_ptr;
         return *this;
     }
 
@@ -306,7 +310,52 @@ class indirect {
      */
     constexpr indirect& operator=(indirect&& other) noexcept(
         std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value ||
-        std::allocator_traits<Allocator>::is_always_equal::value);
+        std::allocator_traits<Allocator>::is_always_equal::value) {
+        if (this == std::addressof(other))
+            return *this;
+
+        // 1. The allocator needs updating if
+        //    allocator_traits<Allocator>::propagate_on_container_move_assignment::value is true.
+        constexpr auto need_update  = std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value;
+        auto           alloc_update = [&]() {
+            if (need_update) {
+                this->alloc = other.alloc;
+            }
+        };
+        // 2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
+        //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+        if (other.valueless_after_move()) {
+            this->checked_destroy_and_deallocate();
+            this->p = nullptr;
+            alloc_update();
+            return *this;
+        }
+        // 3. Otherwise, if alloc == other.alloc is true, swaps the owned objects in *this and other;
+        //    the owned object in other, if any,
+        //    is then destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+        if (this->alloc == other.alloc) {
+            std::swap(this->p, other.p);
+            other.unchecked_destroy_and_deallocate();
+            other.p = nullptr;
+            return *this;
+        }
+
+        // 4. Otherwise constructs a new owned object with the owned object of other as the argument as an rvalue,
+        //    using either the allocator in *this or the allocator in other if the allocator needs updating.
+        // 5. The previously owned object in *this, if any,
+        //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
+
+        // An exception could be thrown here, not swapping allocator for now.
+        auto new_p = need_update ? other.allocate_and_construct(std::move(*other))
+                                 : this->allocate_and_construct(std::move(*other));
+        other.unchecked_destroy_and_deallocate();
+        this->checked_destroy_and_deallocate();
+
+        // All potentially throwing functions are done, commit state change.
+        alloc_update();
+        other.p = nullptr;
+        this->p = new_p;
+    }
 
     /**
      * Constraints:
