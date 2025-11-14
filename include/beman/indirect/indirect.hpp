@@ -373,7 +373,14 @@ class indirect {
         requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> && //
                  std::is_constructible_v<T, U> &&                     //
                  std::is_assignable_v<T&, U>)
-    constexpr indirect& operator=(U&& u);
+    constexpr indirect& operator=(U&& u) {
+        if (this->valueless_after_move()) {
+            this->p = this->allocate_and_construct(std::forward<U>(u));
+        } else {
+            **this = std::forward<U>(u);
+        }
+        return *this;
+    }
 
     /**
      * Preconditions: *this is not valueless.
@@ -441,8 +448,7 @@ class indirect {
     constexpr void
     swap(indirect& other) noexcept(std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
                                    std::allocator_traits<Allocator>::is_always_equal::value) {
-        if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
-                      std::allocator_traits<Allocator>::is_always_equal::value) {
+        if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
             std::swap(this->alloc, other.alloc);
         }
         std::swap(this->p, other.p);
