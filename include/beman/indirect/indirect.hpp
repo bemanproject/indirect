@@ -104,7 +104,7 @@ class indirect {
         // Move constructing
         scope_exit post_condition([&other]() {
             // Post condition: other must be set to valueless regardless of exception state
-            // Here destory or deallocate could throw.
+            // Here destroy or deallocate could throw.
             scope_exit _set_valueless([&other]() { other.p = nullptr; });
             // valueless check done already
             other.unchecked_destroy_and_deallocate();
@@ -117,7 +117,7 @@ class indirect {
         this->construct(std::move(*other));
         _must_not_leak.release();
 
-        // satisify post condition
+        // satisfy post condition
         post_condition.invoke();
     }
 
@@ -215,7 +215,7 @@ class indirect {
      * Effects: If *this is not valueless, destroys the owned object
      * using allocator_traits<Allocator>::destroy and then the storage is deallocated.
      */
-    constexpr ~indirect() { checked_destory_and_deallocate(); }
+    constexpr ~indirect() { checked_destroy_and_deallocate(); }
 
     /**
      * Mandates:
@@ -257,7 +257,7 @@ class indirect {
         //   2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
         if (other.valueless_after_move()) {
-            checked_destory_and_deallocate();
+            checked_destroy_and_deallocate();
             alloc_update();
             this->p = nullptr;
             return *this;
@@ -275,7 +275,7 @@ class indirect {
         //      using either the allocator in *this or the allocator in other if the allocator needs updating.
         //   5. The previously owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
-        checked_destory_and_deallocate();
+        checked_destroy_and_deallocate();
         alloc_update();
         this->p = allocate_and_construct(*other);
         return *this;
@@ -331,42 +331,42 @@ class indirect {
      *
      * Returns: *p.
      */
-    constexpr const T& operator*() const& noexcept;
+    constexpr const T& operator*() const& noexcept { return *this->p; }
 
     /**
      * Preconditions: *this is not valueless.
      *
      * Returns: *p.
      */
-    constexpr T& operator*() & noexcept;
+    constexpr T& operator*() & noexcept { return *this->p; }
 
     /**
      * Preconditions: *this is not valueless.
      *
      * Returns: std::move(*p).
      */
-    constexpr const T&& operator*() const&& noexcept;
+    constexpr const T&& operator*() const&& noexcept { return std::move(*this->p); }
 
     /**
      * Preconditions: *this is not valueless.
      *
      * Returns: std::move(*p).
      */
-    constexpr T&& operator*() && noexcept;
+    constexpr T&& operator*() && noexcept { return std::move(*this->p); }
 
     /**
      * Preconditions: *this is not valueless.
      *
      * Returns: p.
      */
-    constexpr const_pointer operator->() const noexcept;
+    constexpr const_pointer operator->() const noexcept { return this->p; }
 
     /**
      * Preconditions: *this is not valueless.
      *
      * Returns: p.
      */
-    constexpr pointer operator->() noexcept;
+    constexpr pointer operator->() noexcept { return this->p; }
 
     /**
      * Returns: true if *this is valueless, otherwise false.
@@ -376,7 +376,7 @@ class indirect {
     /**
      * Returns: alloc.
      */
-    constexpr allocator_type get_allocator() const noexcept;
+    constexpr allocator_type get_allocator() const noexcept { return this->alloc; }
 
     /**
      * Preconditions: If allocator_traits<Allocator>::propagate_on_container_swap::value is true,
@@ -391,7 +391,13 @@ class indirect {
      */
     constexpr void
     swap(indirect& other) noexcept(std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
-                                   std::allocator_traits<Allocator>::is_always_equal::value);
+                                   std::allocator_traits<Allocator>::is_always_equal::value) {
+        if constexpr (std::allocator_traits<Allocator>::propagate_on_container_swap::value ||
+                      std::allocator_traits<Allocator>::is_always_equal::value) {
+            std::swap(this->alloc, other.alloc);
+        }
+        std::swap(this->p, other.p);
+    }
 
     /**
      * Effects: Equivalent to lhs.swap(rhs).
@@ -445,7 +451,7 @@ class indirect {
     }
 
     // Destories this->p using this->alloc
-    inline constexpr void destory() { std::allocator_traits<Allocator>::destroy(this->alloc, this->p); }
+    inline constexpr void destroy() { std::allocator_traits<Allocator>::destroy(this->alloc, this->p); }
     // Deallocates this->p using this->alloc
     inline constexpr void deallocate() { std::allocator_traits<Allocator>::deallocate(this->alloc, this->p, 1); }
 
@@ -468,7 +474,7 @@ class indirect {
     };
 
     // Disengage ownership if exist, same postcondition as the unchecked counterpart
-    constexpr void checked_destory_and_deallocate() {
+    constexpr void checked_destroy_and_deallocate() {
         if (this->p != nullptr)
             unchecked_destroy_and_deallocate();
     }
@@ -484,7 +490,7 @@ class indirect {
         // must deallocate whatever when we exit this function
         scope_exit _must_deallocate([this]() { this->deallocate(); });
         // destroy may throw
-        destory();
+        destroy();
     }
 
     // Return a pointer to a new object constructed using this->alloc Allocator and args...
