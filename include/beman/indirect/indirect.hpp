@@ -256,7 +256,7 @@ class indirect {
         //   5. The previously owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
 
-        // Updating allocator come after construction. Needed to fullfill exception guarantee: If an exception is
+        // Updating allocator come after construction. Needed to fulfill exception guarantee: If an exception is
         // thrown during the call to T's selected copy constructor, no effect.
         pointer new_ptr;
         if (alloc_need_update) {
@@ -449,7 +449,7 @@ class indirect {
     /**
      * Effects: Equivalent to lhs.swap(rhs).
      */
-    friend constexpr void swap(indirect& lhs, indirect& rhs) noexcept(noexcept(lhs.swap(rhs)));
+    friend constexpr void swap(indirect& lhs, indirect& rhs) noexcept(noexcept(lhs.swap(rhs))) { lhs.swap(rhs); }
 
     /**
      * Mandates: The expression *lhs == *rhs is well-formed and its result is convertible to bool.
