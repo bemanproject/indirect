@@ -8,6 +8,8 @@
 #include <functional>
 #include <gtest/gtest.h>
 #include <memory>
+#include <sys/types.h>
+#include <variant>
 
 enum AllocatorPropagationPolicy {
     PROPAGATE_NONE    = 0b000,
@@ -19,49 +21,130 @@ enum AllocatorPropagationPolicy {
 static constexpr int DEFAULT_ALLOCATOR_ID = -1;
 
 template <typename T, AllocatorPropagationPolicy policy = PROPAGATE_NONE>
-struct CountingAllocator {
-    using value_type                             = T;
-    using size_type                              = std::size_t;
-    using difference_type                        = std::ptrdiff_t;
-    using propagate_on_container_copy_assignment = std::bool_constant<(policy & PROPAGATE_ON_COPY) != 0>;
-    using propagate_on_container_move_assignment = std::bool_constant<(policy & PROPAGATE_ON_MOVE) != 0>;
-    using propagate_on_container_swap            = std::bool_constant<(policy & PROPAGATE_ON_SWAP) != 0>;
-    using Id_type                                = int;
+struct TestAllocator;
+template <typename T, AllocatorPropagationPolicy policy = PROPAGATE_NONE>
+struct CountingAllocatorControl;
 
-    constexpr CountingAllocator() = default;
-    constexpr explicit CountingAllocator(Id_type _id) : id(_id) {}
-    constexpr ~CountingAllocator() = default;
+template <typename T, AllocatorPropagationPolicy policy>
+constexpr TestAllocator<T, policy> create_handle(CountingAllocatorControl<T, policy>&);
+
+template <typename T, AllocatorPropagationPolicy policy>
+struct CountingAllocatorControl {
+  public:
+    using size_type      = std::size_t;
+    using Id_type        = int;
+    using allocator_type = TestAllocator<T, policy>;
+
+    constexpr CountingAllocatorControl() = default;
+    constexpr CountingAllocatorControl(Id_type id_) : id(id_) {}
 
     constexpr T* allocate(std::size_t n) {
         ++num_allocated;
         return _backing.allocate(n);
     }
 
-    void deallocate(T* p, std::size_t n) {
+    constexpr void deallocate(T* p, std::size_t n) {
         ++num_deallocated;
         _backing.deallocate(p, n);
     }
 
-    bool operator==(const CountingAllocator& other) const { return id == other.id; }
-    bool operator!=(const CountingAllocator& other) const { return id != other.id; }
+    constexpr TestAllocator<T, policy> handle() { return create_handle(*this); }
 
     std::allocator<T> _backing{};
-
-    size_type num_allocated   = 0;
-    size_type num_deallocated = 0;
-    Id_type   id              = DEFAULT_ALLOCATOR_ID;
+    size_type         num_allocated   = 0;
+    size_type         num_deallocated = 0;
+    Id_type           id              = DEFAULT_ALLOCATOR_ID;
 };
 
-// making sure the allocators are consteval-able
+template <typename T, AllocatorPropagationPolicy policy>
+constexpr TestAllocator<T, policy> create_handle(CountingAllocatorControl<T, policy>& ctl) {
+    return TestAllocator{std::ref(ctl)};
+}
+
+/**
+ * There's two kinds of testing allocator:
+ * 1. The default allocator, directly funnel alloc/ dealloc into std::allocator
+ * 2. The counting allocator, redirect alloc/ dealloc into a allocator manager,
+ *    allows stats collection/ instrummented exception behavior.
+ */
+template <typename T, AllocatorPropagationPolicy policy>
+struct TestAllocator {
+    using compatible_control_block = std::reference_wrapper<CountingAllocatorControl<T, policy>>;
+    using default_allocator        = std::allocator<T>;
+
+    struct ControlBlockWrapper {
+        constexpr ControlBlockWrapper(compatible_control_block&& ctl_)
+            : ctl(std::forward<compatible_control_block>(ctl_)) {}
+        constexpr T*             allocate(std::size_t n) { return ctl.get().allocate(n); }
+        constexpr void           deallocate(T* p, std::size_t n) { ctl.get().deallocate(p, n); }
+        compatible_control_block ctl;
+    };
+
+  public:
+    using value_type                             = T;
+    using size_type                              = std::size_t;
+    using difference_type                        = std::ptrdiff_t;
+    using propagate_on_container_copy_assignment = std::bool_constant<(policy & PROPAGATE_ON_COPY) != 0>;
+    using propagate_on_container_move_assignment = std::bool_constant<(policy & PROPAGATE_ON_MOVE) != 0>;
+    using propagate_on_container_swap            = std::bool_constant<(policy & PROPAGATE_ON_SWAP) != 0>;
+    using Id_type                                = CountingAllocatorControl<T, policy>::Id_type;
+
+    constexpr TestAllocator() : backing(default_allocator{}), id(DEFAULT_ALLOCATOR_ID) {}
+    constexpr TestAllocator(compatible_control_block&& c)
+        : backing(std::forward<compatible_control_block>(c)), id(c.get().id) {}
+
+    constexpr T* allocate(std::size_t n) {
+        return std::visit([n](auto&& v) { return v.allocate(n); }, backing);
+    }
+
+    constexpr void deallocate(T* p, std::size_t n) {
+        std::visit([p, n](auto&& v) { v.deallocate(p, n); }, backing);
+    }
+
+    bool operator==(const TestAllocator& other) const { return id == other.id; }
+    bool operator!=(const TestAllocator& other) const { return id != other.id; }
+
+    std::variant<default_allocator, ControlBlockWrapper> backing;
+    Id_type                                              id = DEFAULT_ALLOCATOR_ID;
+};
+
+// Allocator tests
+
 static_assert(std::invoke([]() {
-    CountingAllocator<int> _default;
-    (void)_default;
+    std::allocator<int> alloc;
+    alloc.deallocate(alloc.allocate(1), 1);
     return true;
+}));
+
+static_assert(std::invoke([]() {
+    TestAllocator<int> alloc;
+    auto               p = alloc.allocate(1);
+    alloc.deallocate(p, 1);
+    return true;
+}));
+
+static_assert(std::invoke([]() {
+    CountingAllocatorControl<int> ctl;
+    auto                          p = ctl.handle().allocate(1);
+    ctl.handle().deallocate(p, 1);
+
+    return ctl.num_allocated == 1 && ctl.num_deallocated == 1;
+}));
+
+static_assert(std::invoke([]() {
+    CountingAllocatorControl<int> ctl;
+
+    auto alloc  = ctl.handle();
+    auto p      = alloc.allocate(1);
+    auto alloc2 = alloc;
+    alloc2.deallocate(p, 1);
+
+    return ctl.num_allocated == 1 && ctl.num_deallocated == 1;
 }));
 
 #define ASSERT_NO_LEAKS(alloc) EXPECT_EQ(alloc.num_allocated, alloc.num_deallocated)
 
-template <typename T, typename Alloc = CountingAllocator<T>>
+template <typename T, typename Alloc = TestAllocator<T>>
 using indirect = beman::indirect::indirect<T, Alloc>;
 
 // TODO: Move these to a header file and add factory methods so they can be in another TU to test for incomplete type.
@@ -162,10 +245,10 @@ TEST(IndirectTest, DefaultConstructor) {
 
 TEST(IndirectTest, DefaultConstructorWithAllocator) {
     using T = DefaultConstructible;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc);
+        indirect<T> instance(std::allocator_arg, alloc.handle());
 
         EXPECT_FALSE(instance.valueless_after_move());
     }
@@ -208,10 +291,10 @@ TEST(IndirectTest, InPlaceConstructorBasic) {
 
 TEST(IndirectTest, InPlaceConstructorBasicWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
 
         EXPECT_EQ(*instance, T(1, 2, 3));
     }
@@ -268,10 +351,10 @@ TEST(IndirectTest, InPlaceConstructorWithArgs) {
 
 TEST(IndirectTest, InPlaceConstructorWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         EXPECT_EQ(*instance, T(7, 8, 9));
     }
@@ -320,13 +403,13 @@ TEST(IndirectTest, CopyConstructor) {
 
 TEST(IndirectTest, CopyConstructorWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc1(100);
-    CountingAllocator<T> alloc2(200);
+    CountingAllocatorControl<T> alloc1(100);
+    CountingAllocatorControl<T> alloc2(200);
 
     {
-        indirect<T> original(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
+        indirect<T> original(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
 
-        indirect<T> copy(std::allocator_arg, alloc2, original);
+        indirect<T> copy(std::allocator_arg, alloc2.handle(), original);
 
         EXPECT_EQ(*copy, T(10, 20, 30));
 
@@ -383,13 +466,13 @@ TEST(IndirectTest, MoveConstructor) {
 
 TEST(IndirectTest, MoveConstructorWithAllocatorSameAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> original(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+        indirect<T> original(std::allocator_arg, alloc.handle(), std::in_place, 10, 20, 30);
         EXPECT_FALSE(original.valueless_after_move());
 
-        indirect<T> moved(std::allocator_arg, alloc, std::move(original));
+        indirect<T> moved(std::allocator_arg, alloc.handle(), std::move(original));
 
         EXPECT_EQ(*moved, T(10, 20, 30));
         EXPECT_TRUE(original.valueless_after_move());
@@ -459,11 +542,11 @@ TEST(IndirectTest, ForwardingConstructorFromRValue) {
 
 TEST(IndirectTest, ForwardingConstructorFromLValueWithAllocator) {
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
         T           value(42);
-        indirect<T> instance(std::allocator_arg, alloc, value);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), value);
 
         EXPECT_EQ(*instance, T(42));
         EXPECT_EQ(value, T(42)); // Original should be unchanged
@@ -547,10 +630,10 @@ TEST(IndirectTest, InitializerListConstructorWithArgs) {
 
 TEST(IndirectTest, InitializerListConstructorWithAllocator) {
     using T = VectorWrapper;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, {7, 8, 9});
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, {7, 8, 9});
 
         EXPECT_EQ(*instance, T({7, 8, 9}));
     }
@@ -571,10 +654,10 @@ TEST(IndirectTest, InitializerListConstructorWithAllocator) {
 
 TEST(IndirectTest, InitializerListConstructorWithAllocatorAndArgs) {
     using T = VectorWithInt;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, {100, 200}, 5);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, {100, 200}, 5);
 
         EXPECT_EQ(*instance, T({100, 200}, 5));
     }
@@ -645,12 +728,12 @@ TEST(IndirectTest, CopyAssignmentSelfAssignment) {
 
 TEST(IndirectTest, CopyAssignmentWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc1;
-    CountingAllocator<T> alloc2;
+    CountingAllocatorControl<T> alloc1;
+    CountingAllocatorControl<T> alloc2;
 
     {
-        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         target = source;
 
@@ -722,17 +805,18 @@ TEST(IndirectTest, CopyAssignmentWithPropagateCopyAllocator) {
     //    allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
     // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
 
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_ON_COPY>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_ON_COPY>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value);
 
-    Alloc alloc1(100);
-    Alloc alloc2(200);
+    AllocCtl alloc1(100);
+    AllocCtl alloc2(200);
 
     {
-        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         // Before assignment, allocators are different
         EXPECT_NE(source.get_allocator(), target.get_allocator());
@@ -756,17 +840,18 @@ TEST(IndirectTest, CopyAssignmentWithPropagateCopyAllocator) {
 TEST(IndirectTest, CopyAssignmentWithoutPropagateCopyAllocator) {
     // Test inverse to the case above:
     // allocator does NOT propagate when propagate_on_container_copy_assignment is false
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_NONE>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(!std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value);
 
-    Alloc alloc1(100);
-    Alloc alloc2(200);
+    AllocCtl alloc1(100);
+    AllocCtl alloc2(200);
 
     {
-        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         // Before assignment, allocators are different
         EXPECT_NE(source.get_allocator(), target.get_allocator());
@@ -798,24 +883,24 @@ TEST(IndirectTest, CopyAssignmentDifferentAllocatorsConstructsNewObject) {
     //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
 
     using T = Composite;
-    CountingAllocator<T> alloc1(100);
-    CountingAllocator<T> alloc2(200);
+    CountingAllocatorControl<T> alloc1(100);
+    CountingAllocatorControl<T> alloc2(200);
 
     {
-        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         EXPECT_NE(source.get_allocator(), target.get_allocator());
 
         // Before assignment: target's allocator has allocated 1 object
-        EXPECT_EQ(target.get_allocator().num_allocated, 1);
+        EXPECT_EQ(alloc2.num_allocated, 1);
 
         // Assignment with different allocators should construct new object
         target = source;
 
         // After assignment: target's allocator should have allocated another object
-        EXPECT_EQ(target.get_allocator().num_allocated, 2);   // New allocation happened
-        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destroyed
+        EXPECT_EQ(alloc2.num_allocated, 2);   // New allocation happened
+        EXPECT_EQ(alloc2.num_deallocated, 1); // Original allocation destroyed
         EXPECT_EQ(*target, T(10, 20, 30));
         EXPECT_EQ(*source, T(10, 20, 30));
     }
@@ -827,11 +912,11 @@ TEST(IndirectTest, CopyAssignmentDifferentAllocatorsConstructsNewObject) {
 TEST(IndirectTest, CopyAssignmentSameAllocatorInPlace) {
     // Test condition 3: if alloc == other.alloc and *this is not valueless, use **this = *other
     using T = Composite;
-    CountingAllocator<T> alloc(100);
+    CountingAllocatorControl<T> alloc(100);
 
     {
-        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
 
         EXPECT_EQ(source.get_allocator(), target.get_allocator());
 
@@ -910,12 +995,12 @@ TEST(IndirectTest, MoveAssignmentSelfAssignment) {
 
 TEST(IndirectTest, MoveAssignmentWithAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc1;
-    CountingAllocator<T> alloc2;
+    CountingAllocatorControl<T> alloc1;
+    CountingAllocatorControl<T> alloc2;
 
     {
-        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         target = std::move(source);
 
@@ -929,11 +1014,11 @@ TEST(IndirectTest, MoveAssignmentWithAllocator) {
 
 TEST(IndirectTest, MoveAssignmentSameAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
 
         target = std::move(source);
 
@@ -1015,17 +1100,18 @@ TEST(IndirectTest, MoveAssignmentWithPropagateMoveAllocator) {
     //    allocator_traits<Allocator>::propagate_on_container_move_assignment::value is true.
     // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in other.
 
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_ON_MOVE>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_ON_MOVE>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value);
 
-    Alloc alloc1(100);
-    Alloc alloc2(200);
+    AllocCtl alloc1(100);
+    AllocCtl alloc2(200);
 
     {
-        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         // Before assignment, allocators are different
         EXPECT_NE(source.get_allocator(), target.get_allocator());
@@ -1048,17 +1134,18 @@ TEST(IndirectTest, MoveAssignmentWithPropagateMoveAllocator) {
 TEST(IndirectTest, MoveAssignmentWithoutPropagateMoveAllocator) {
     // Test inverse to the case above:
     // allocator does NOT propagate when propagate_on_container_move_assignment is false
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_NONE>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(!std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value);
 
-    Alloc alloc1(100);
-    Alloc alloc2(200);
+    AllocCtl alloc1(100);
+    AllocCtl alloc2(200);
 
     {
-        indirect<T, Alloc> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T, Alloc> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T, Alloc> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T, Alloc> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         // Before assignment, allocators are different
         EXPECT_NE(source.get_allocator(), target.get_allocator());
@@ -1087,24 +1174,24 @@ TEST(IndirectTest, MoveAssignmentDifferentAllocatorsConstructsNewObject) {
     //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
 
     using T = Composite;
-    CountingAllocator<T> alloc1(100);
-    CountingAllocator<T> alloc2(200);
+    CountingAllocatorControl<T> alloc1(100);
+    CountingAllocatorControl<T> alloc2(200);
 
     {
-        indirect<T> source(std::allocator_arg, alloc1, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc2, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         EXPECT_NE(source.get_allocator(), target.get_allocator());
 
         // Before assignment: target's allocator has allocated 1 object
-        EXPECT_EQ(target.get_allocator().num_allocated, 1);
+        EXPECT_EQ(alloc2.num_allocated, 1);
 
         // Move assignment with different allocators should construct new object
         target = std::move(source);
 
         // After assignment: target's allocator should have allocated another object
-        EXPECT_EQ(target.get_allocator().num_allocated, 2);   // New allocation happened
-        EXPECT_EQ(target.get_allocator().num_deallocated, 1); // Original allocation destroyed
+        EXPECT_EQ(alloc2.num_allocated, 2);   // New allocation happened
+        EXPECT_EQ(alloc2.num_deallocated, 1); // Original allocation destroyed
         EXPECT_EQ(*target, T(10, 20, 30));
         EXPECT_TRUE(source.valueless_after_move());
     }
@@ -1116,11 +1203,11 @@ TEST(IndirectTest, MoveAssignmentDifferentAllocatorsConstructsNewObject) {
 TEST(IndirectTest, MoveAssignmentSameAllocatorSwap) {
     // Test condition 3: if alloc == other.alloc, swaps the owned objects then destroys
     using T = Composite;
-    CountingAllocator<T> alloc(100);
+    CountingAllocatorControl<T> alloc(100);
 
     {
-        indirect<T> source(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
-        indirect<T> target(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
+        indirect<T> source(std::allocator_arg, alloc.handle(), std::in_place, 10, 20, 30);
+        indirect<T> target(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
 
         EXPECT_EQ(source.get_allocator(), target.get_allocator());
 
@@ -1163,11 +1250,11 @@ TEST(IndirectTest, MoveAssignmentSameAllocatorSwap) {
 
 TEST(IndirectTest, ForwardingAssignmentFromLValue) {
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
-        T                                 value(99);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
+        T           value(99);
 
         instance = value;
 
@@ -1181,10 +1268,11 @@ TEST(IndirectTest, ForwardingAssignmentFromLValue) {
 
 TEST(IndirectTest, ForwardingAssignmentFromRValue) {
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
 
         instance = T(99);
 
@@ -1197,13 +1285,13 @@ TEST(IndirectTest, ForwardingAssignmentFromRValue) {
 
 TEST(IndirectTest, ForwardingAssignmentFromLValueToValueless) {
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
 
         // Make instance valueless
-        indirect<T, CountingAllocator<T>> temp(std::move(instance));
+        indirect<T> temp(std::move(instance));
         EXPECT_TRUE(instance.valueless_after_move());
 
         // Assign to valueless instance - should construct new object
@@ -1222,13 +1310,13 @@ TEST(IndirectTest, ForwardingAssignmentFromLValueToValueless) {
 
 TEST(IndirectTest, ForwardingAssignmentFromRValueToValueless) {
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T, CountingAllocator<T>> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
 
         // Make instance valueless
-        indirect<T, CountingAllocator<T>> temp(std::move(instance));
+        indirect<T> temp(std::move(instance));
         EXPECT_TRUE(instance.valueless_after_move());
 
         // Assign rvalue to valueless instance - should construct new object
@@ -1246,10 +1334,10 @@ TEST(IndirectTest, ForwardingAssignmentFromRValueToValueless) {
 TEST(IndirectTest, ForwardingAssignmentFromConvertibleType) {
     // Test U != T case where U is convertible to T
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T>             instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T>             instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
         ConvertibleToSimpleType value(99);
 
         instance = value;
@@ -1265,10 +1353,10 @@ TEST(IndirectTest, ForwardingAssignmentFromConvertibleType) {
 TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeRValue) {
     // Test U != T case with rvalue where U is convertible to T
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
 
         instance = ConvertibleToSimpleType(99);
 
@@ -1282,10 +1370,10 @@ TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeRValue) {
 TEST(IndirectTest, ForwardingAssignmentFromConvertibleTypeToValueless) {
     // Test U != T case assigning to valueless instance
     using T = SimpleType;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> instance(std::allocator_arg, alloc, std::in_place, 42);
+        indirect<T> instance(std::allocator_arg, alloc.handle(), std::in_place, 42);
 
         // Make instance valueless
         indirect<T> temp(std::move(instance));
@@ -1569,8 +1657,8 @@ TEST(IndirectTest, ValuelessAfterMoveMoveConstructedFromValueless) {
 
 TEST(IndirectTest, GetAllocatorWithPassedAllocator) {
     using T = Composite;
-    CountingAllocator<T> alloc(100);
-    indirect<T>          instance(std::allocator_arg, alloc, std::in_place, 10, 20, 30);
+    CountingAllocatorControl<T> alloc(100);
+    indirect<T>                 instance(std::allocator_arg, alloc.handle(), std::in_place, 10, 20, 30);
 
     EXPECT_EQ(instance.get_allocator().id, 100);
 }
@@ -1619,11 +1707,11 @@ TEST(IndirectTest, SwapBasic) {
 TEST(IndirectTest, SwapNonValuelessWithNonValueless) {
     // Test swapping two non-valueless objects
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
-        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> lhs(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         EXPECT_FALSE(lhs.valueless_after_move());
         EXPECT_FALSE(rhs.valueless_after_move());
@@ -1642,11 +1730,11 @@ TEST(IndirectTest, SwapNonValuelessWithNonValueless) {
 TEST(IndirectTest, SwapNonValuelessWithValueless) {
     // Test swapping non-valueless with valueless
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
-        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> lhs(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         // Make rhs valueless
         indirect<T> temp(std::move(rhs));
@@ -1667,11 +1755,11 @@ TEST(IndirectTest, SwapNonValuelessWithValueless) {
 TEST(IndirectTest, SwapValuelessWithNonValueless) {
     // Test swapping valueless with non-valueless
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
-        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> lhs(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         // Make lhs valueless
         indirect<T> temp(std::move(lhs));
@@ -1692,11 +1780,11 @@ TEST(IndirectTest, SwapValuelessWithNonValueless) {
 TEST(IndirectTest, SwapValuelessWithValueless) {
     // Test swapping two valueless objects
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
-        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> lhs(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         // Make both valueless
         indirect<T> temp1(std::move(lhs));
@@ -1716,19 +1804,20 @@ TEST(IndirectTest, SwapValuelessWithValueless) {
 
 TEST(IndirectTest, SwapWithPropagateOnSwapTrue) {
     // Test that allocators are swapped when propagate_on_container_swap is true
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_ON_SWAP>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_ON_SWAP>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(std::allocator_traits<Alloc>::propagate_on_container_swap::value);
 
     Alloc::Id_type lhs_alloc_id = 100, rhs_alloc_id = 200;
 
-    Alloc alloc1(lhs_alloc_id);
-    Alloc alloc2(rhs_alloc_id);
+    AllocCtl alloc1(lhs_alloc_id);
+    AllocCtl alloc2(rhs_alloc_id);
 
     {
-        indirect<T, Alloc> lhs(std::allocator_arg, alloc1, std::in_place, 1, 2, 3);
-        indirect<T, Alloc> rhs(std::allocator_arg, alloc2, std::in_place, 7, 8, 9);
+        indirect<T, Alloc> lhs(std::allocator_arg, alloc1.handle(), std::in_place, 1, 2, 3);
+        indirect<T, Alloc> rhs(std::allocator_arg, alloc2.handle(), std::in_place, 7, 8, 9);
 
         // Before swap, allocators are different
         EXPECT_NE(lhs.get_allocator(), rhs.get_allocator());
@@ -1752,19 +1841,20 @@ TEST(IndirectTest, SwapWithPropagateOnSwapTrue) {
 TEST(IndirectTest, SwapWithPropagateOnSwapFalse) {
     // Test that allocators are NOT swapped when propagate_on_container_swap is false
     // In this case, the allocators must be equal (same allocator)
-    using T     = Composite;
-    using Alloc = CountingAllocator<T, PROPAGATE_NONE>;
+    using T        = Composite;
+    using AllocCtl = CountingAllocatorControl<T, PROPAGATE_NONE>;
+    using Alloc    = AllocCtl::allocator_type;
 
     static_assert(!std::allocator_traits<Alloc>::propagate_on_container_swap::value);
 
     Alloc::Id_type lhs_alloc_id = 100, rhs_alloc_id = 200;
 
-    Alloc alloc1(lhs_alloc_id);
-    Alloc alloc2(rhs_alloc_id);
+    AllocCtl alloc1(lhs_alloc_id);
+    AllocCtl alloc2(rhs_alloc_id);
 
     {
-        indirect<T, Alloc> lhs(std::allocator_arg, alloc1, std::in_place, 1, 2, 3);
-        indirect<T, Alloc> rhs(std::allocator_arg, alloc2, std::in_place, 7, 8, 9);
+        indirect<T, Alloc> lhs(std::allocator_arg, alloc1.handle(), std::in_place, 1, 2, 3);
+        indirect<T, Alloc> rhs(std::allocator_arg, alloc2.handle(), std::in_place, 7, 8, 9);
 
         // Both use same allocator
         EXPECT_NE(lhs.get_allocator(), rhs.get_allocator());
@@ -1814,11 +1904,11 @@ TEST(IndirectTest, SwapFreeFunction) {
 TEST(IndirectTest, SwapNoAllocation) {
     // Test that swap does not allocate or deallocate memory
     using T = Composite;
-    CountingAllocator<T> alloc;
+    CountingAllocatorControl<T> alloc;
 
     {
-        indirect<T> lhs(std::allocator_arg, alloc, std::in_place, 1, 2, 3);
-        indirect<T> rhs(std::allocator_arg, alloc, std::in_place, 7, 8, 9);
+        indirect<T> lhs(std::allocator_arg, alloc.handle(), std::in_place, 1, 2, 3);
+        indirect<T> rhs(std::allocator_arg, alloc.handle(), std::in_place, 7, 8, 9);
 
         lhs.swap(rhs);
 
