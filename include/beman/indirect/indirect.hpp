@@ -24,7 +24,7 @@ class indirect {
      *
      * Effects: Constructs an owned object of type T with an empty argument list, using the allocator alloc.
      */
-    explicit constexpr indirect() : indirect(std::allocator_arg, Allocator{}) {}
+    explicit constexpr indirect() : alloc(Allocator{}), p(allocate_and_construct()) {}
 
     /**
      * Mandates: is_default_constructible_v<T> is true.
@@ -42,7 +42,8 @@ class indirect {
      * If other is valueless, *this is valueless.
      * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
      */
-    constexpr indirect(const indirect& other) : indirect(std::allocator_arg, Allocator{}, other) {}
+    constexpr indirect(const indirect& other)
+        : alloc(Allocator{}), p(other.valueless_after_move() ? nullptr : allocate_and_construct(*other)) {}
 
     /**
      * Mandates: is_copy_constructible_v<T> is true.
@@ -50,14 +51,8 @@ class indirect {
      * Effects: alloc is direct-non-list-initialized with a. If other is valueless, *this is valueless.
      * Otherwise, constructs an owned object of type T with *other, using the allocator alloc.
      */
-    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other) : alloc(a) {
-        if (other.valueless_after_move()) {
-            this->p = nullptr;
-            return;
-        }
-
-        this->p = allocate_and_construct(*other);
-    }
+    constexpr indirect(std::allocator_arg_t, const Allocator& a, const indirect& other)
+        : alloc(a), p(other.valueless_after_move() ? nullptr : allocate_and_construct(*other)) {}
 
     /**
      * Effects: alloc is direct-non-list-initialized from std::move(other.alloc).
@@ -66,13 +61,7 @@ class indirect {
      *
      * Postconditions: other is valueless.
      */
-    constexpr indirect(indirect&& other) noexcept {
-        this->alloc = std::move(other.alloc);
-        // takes ownership directly
-        this->p = other.p;
-        // Mark other as valueless
-        other.p = nullptr;
-    }
+    constexpr indirect(indirect&& other) noexcept : alloc(std::move(other.alloc)), p(other.p) { other.p = nullptr; }
 
     /**
      * Mandates: If allocator_traits<Allocator>::is_always_equal::value is false then T is a complete type.
@@ -136,7 +125,7 @@ class indirect {
                  (!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t>) && //
                  std::is_constructible_v<T, U> &&                              //
                  std::is_default_constructible_v<Allocator>)
-        : indirect(std::allocator_arg, Allocator{}, std::forward<U>(u)) {}
+        : alloc(Allocator{}), p(allocate_and_construct(std::forward<U>(u))) {}
 
     /**
      * Constraints:
@@ -152,7 +141,7 @@ class indirect {
         requires((!std::is_same_v<std::remove_cvref_t<U>, indirect>) &&        //
                  (!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t>) && //
                  std::is_constructible_v<T, U>)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward<U>(u)) {}
+        : alloc(a), p(allocate_and_construct(std::forward<U>(u))) {}
 
     /**
      * Constraints:
@@ -164,7 +153,7 @@ class indirect {
     template <class... Us>
     explicit constexpr indirect(std::in_place_t, Us&&... us)
         requires(std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::forward<Us>(us)...) {}
+        : alloc(Allocator{}), p(allocate_and_construct(std::forward<Us>(us)...)) {}
 
     /**
      * Constraints: is_constructible_v<T, Us...> is true.
@@ -175,10 +164,7 @@ class indirect {
     template <class... Us>
     explicit constexpr indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us)
         requires(std::is_constructible_v<T, Us...>)
-    {
-        this->alloc = a;
-        this->p     = allocate_and_construct(std::forward<Us>(us)...);
-    }
+        : alloc(a), p(allocate_and_construct(std::forward<Us>(us)...)) {}
 
     /**
      * Constraints:
@@ -192,7 +178,7 @@ class indirect {
     explicit constexpr indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
                  std::is_default_constructible_v<Allocator>)
-        : indirect(std::allocator_arg, Allocator{}, std::in_place, std::move(ilist), std::forward<Us>(us)...) {}
+        : alloc(Allocator{}), p(allocate_and_construct(std::move(ilist), std::forward<Us>(us)...)) {}
 
     /**
      * Constraints: is_constructible_v<T, initializer_list<I>&, Us...> is true.
@@ -204,10 +190,7 @@ class indirect {
     explicit constexpr indirect(
         std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
-    {
-        this->alloc = a;
-        this->p     = allocate_and_construct(std::move(ilist), std::forward<Us>(us)...);
-    }
+        : alloc(a), p(allocate_and_construct(std::move(ilist), std::forward<Us>(us)...)) {}
 
     /**
      * Mandates: T is a complete type.
@@ -250,17 +233,14 @@ class indirect {
 
         //   1. The allocator needs updating if
         //      allocator_traits<Allocator>::propagate_on_container_copy_assignment::value is true.
-        constexpr auto need_update  = std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value;
-        auto           alloc_update = [&]() {
-            if (need_update) {
-                this->alloc = other.alloc;
-            }
-        };
+        constexpr auto alloc_need_update =
+            std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value;
         //   2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
         if (other.valueless_after_move()) {
             checked_destroy_and_deallocate();
-            alloc_update();
+            if (alloc_need_update)
+                this->alloc = other.alloc;
             this->p = nullptr;
             return *this;
         }
@@ -276,11 +256,22 @@ class indirect {
         //   5. The previously owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
 
-        // Needed to fullfill exception guarantee: If an exception is thrown during the call to T's selected copy
-        // constructor, no effect.
-        auto new_ptr = need_update ? other.allocate_and_construct(*other) : this->allocate_and_construct(*other);
-        this->checked_destroy_and_deallocate();
-        alloc_update();
+        // Updating allocator come after construction. Needed to fullfill exception guarantee: If an exception is
+        // thrown during the call to T's selected copy constructor, no effect.
+        pointer new_ptr;
+        if (alloc_need_update) {
+            // Allocator is copied twice here as other is a const&
+            auto new_alloc = other.alloc;
+            auto new_ptr   = std::allocator_traits<Allocator>::allocate(new_alloc, 1);
+            std::allocator_traits<Allocator>::construct(new_alloc, new_ptr, *other);
+            this->checked_destroy_and_deallocate();
+            // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in
+            // other.
+            this->alloc = new_alloc;
+        } else {
+            new_ptr = this->allocate_and_construct(*other);
+            this->checked_destroy_and_deallocate();
+        }
         this->p = new_ptr;
         return *this;
     }
@@ -355,6 +346,7 @@ class indirect {
         alloc_update();
         other.p = nullptr;
         this->p = new_p;
+        return *this;
     }
 
     /**
