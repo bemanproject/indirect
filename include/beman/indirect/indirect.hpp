@@ -103,9 +103,11 @@ class indirect {
         this->p = allocate_ptr();
 
         // We have to rewind allocation if there's exception here.
-        scope_exit _must_not_leak([this]() { this->deallocate(); });
-        this->construct(std::move(*other));
-        _must_not_leak.release();
+        try {
+            this->construct(std::move(*other));
+        } catch (...) {
+            this->deallocate();
+        }
 
         // satisfy post condition
         post_condition.invoke();
@@ -239,7 +241,7 @@ class indirect {
         //   2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
         //      is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
         if (other.valueless_after_move()) {
-            checked_destroy_and_deallocate();
+            this->checked_destroy_and_deallocate();
             if (alloc_need_update)
                 this->alloc = other.alloc;
             this->p = nullptr;
@@ -263,7 +265,7 @@ class indirect {
             if (!alloc_need_update)
                 return this->allocate_and_construct(*other);
 
-            // We need to consturct a new storage using other's allocator
+            // We need to construct a new storage using other's allocator
             // Allocator is copied twice here as other is a const&
             auto new_alloc = other.alloc;
             auto ptr       = std::allocator_traits<Allocator>::allocate(new_alloc, 1);
@@ -518,13 +520,12 @@ class indirect {
 
     template <typename lambda>
     struct scope_exit {
-        explicit scope_exit(lambda&& f_) : f(f_) {}
-        ~scope_exit() { invoke(); }
-        constexpr void release() noexcept { released = true; }
+        constexpr explicit scope_exit(lambda&& f_) : f(f_) {}
+        constexpr ~scope_exit() { invoke(); }
         constexpr void invoke() {
             if (!released)
                 f();
-            release();
+            released = true;
         }
 
       private:

@@ -822,6 +822,11 @@ static_assert(std::invoke([]() {
         indirect<T, Alloc> target(std::allocator_arg, alloc2.handle(), std::in_place, 1, 2, 3);
 
         target = source;
+
+        expect(*target == T(10, 20, 30));
+        expect(*source == T(10, 20, 30));
+        expect(target.get_allocator() == source.get_allocator());
+        expect(target.get_allocator().id == 100);
     }
 
     return true;
