@@ -7,6 +7,7 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <functional>
 
 namespace beman::indirect {
 template <class T, class Allocator = std::allocator<T>>
@@ -258,19 +259,28 @@ class indirect {
 
         // Updating allocator come after construction. Needed to fulfill exception guarantee: If an exception is
         // thrown during the call to T's selected copy constructor, no effect.
-        pointer new_ptr;
-        if (alloc_need_update) {
+        auto new_ptr = std::invoke([&]() {
+            if (!alloc_need_update)
+                return this->allocate_and_construct(*other);
+
+            // We need to consturct a new storage using other's allocator
             // Allocator is copied twice here as other is a const&
             auto new_alloc = other.alloc;
-            auto new_ptr   = std::allocator_traits<Allocator>::allocate(new_alloc, 1);
-            std::allocator_traits<Allocator>::construct(new_alloc, new_ptr, *other);
-            this->checked_destroy_and_deallocate();
-            // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator in
-            // other.
-            this->alloc = new_alloc;
-        } else {
-            new_ptr = this->allocate_and_construct(*other);
-            this->checked_destroy_and_deallocate();
+            auto ptr       = std::allocator_traits<Allocator>::allocate(new_alloc, 1);
+            try {
+                std::allocator_traits<Allocator>::construct(new_alloc, ptr, *other);
+            } catch (...) {
+                std::allocator_traits<Allocator>::deallocate(new_alloc, ptr, 1);
+                throw;
+            }
+            return ptr;
+        });
+
+        this->checked_destroy_and_deallocate();
+        // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator
+        // in other.
+        if (alloc_need_update) {
+            this->alloc = other.alloc;
         }
         this->p = new_ptr;
         return *this;
@@ -343,7 +353,9 @@ class indirect {
         this->checked_destroy_and_deallocate();
 
         // All potentially throwing functions are done, commit state change.
-        alloc_update();
+        // alloc_update();
+        if (need_update)
+            this->alloc = other.alloc;
         other.p = nullptr;
         this->p = new_p;
         return *this;
@@ -545,7 +557,7 @@ class indirect {
     // Note: pointer this->p is not updated.
     // Exception guarantee: no memory leak if construct throws
     template <class... Args>
-    pointer allocate_and_construct(Args&&... args) {
+    constexpr pointer allocate_and_construct(Args&&... args) {
         auto target = std::allocator_traits<Allocator>::allocate(this->alloc, 1);
         try {
             std::allocator_traits<Allocator>::construct(this->alloc, target, std::forward<Args>(args)...);
