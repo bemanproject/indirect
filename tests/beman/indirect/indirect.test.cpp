@@ -1953,3 +1953,168 @@ TEST(IndirectTest, SwapNoAllocation) {
 
     ASSERT_NO_LEAKS(alloc);
 }
+
+// ========================================
+// Equality Comparison Operator Tests
+// ========================================
+
+/**
+ * template <class U, class AA>
+ * friend constexpr bool operator==(const indirect& lhs, const indirect<U, AA>& rhs) noexcept(noexcept(*lhs == *rhs));
+ *
+ * Mandates: The expression *lhs == *rhs is well-formed and its result is convertible to bool.
+ *
+ * Returns: If lhs is valueless or rhs is valueless,
+ * lhs.valueless_after_move() == rhs.valueless_after_move(); otherwise *lhs == *rhs.
+ */
+
+TEST(IndirectTest, EqualityOperatorBothNonValuelessEqual) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 10, 20, 30);
+
+    EXPECT_TRUE(lhs == rhs);
+    EXPECT_FALSE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorBothNonValuelessNotEqual) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    EXPECT_FALSE(lhs == rhs);
+    EXPECT_TRUE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorBothValueless) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    // Make both valueless
+    indirect<T> temp1(std::move(lhs));
+    indirect<T> temp2(std::move(rhs));
+
+    EXPECT_TRUE(lhs.valueless_after_move());
+    EXPECT_TRUE(rhs.valueless_after_move());
+
+    // Both valueless should be equal
+    EXPECT_TRUE(lhs == rhs);
+    EXPECT_FALSE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorLhsValuelessRhsNonValueless) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    // Make lhs valueless
+    indirect<T> temp(std::move(lhs));
+
+    EXPECT_TRUE(lhs.valueless_after_move());
+    EXPECT_FALSE(rhs.valueless_after_move());
+
+    // One valueless, one not - should not be equal
+    EXPECT_FALSE(lhs == rhs);
+    EXPECT_TRUE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorLhsNonValuelessRhsValueless) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    indirect<T> rhs(std::in_place, 40, 50, 60);
+
+    // Make rhs valueless
+    indirect<T> temp(std::move(rhs));
+
+    EXPECT_FALSE(lhs.valueless_after_move());
+    EXPECT_TRUE(rhs.valueless_after_move());
+
+    // One valueless, one not - should not be equal
+    EXPECT_FALSE(lhs == rhs);
+    EXPECT_TRUE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorWithDifferentAllocators) {
+    using T = Composite;
+    CountingAllocatorControl<T> alloc1(100);
+    CountingAllocatorControl<T> alloc2(200);
+
+    {
+        indirect<T> lhs(std::allocator_arg, alloc1.handle(), std::in_place, 10, 20, 30);
+        indirect<T> rhs(std::allocator_arg, alloc2.handle(), std::in_place, 10, 20, 30);
+
+        // Should compare values, not allocators
+        EXPECT_TRUE(lhs == rhs);
+        EXPECT_FALSE(lhs != rhs);
+    }
+
+    ASSERT_NO_LEAKS(alloc1);
+    ASSERT_NO_LEAKS(alloc2);
+}
+
+/**
+ * template <class U>
+ * friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs));
+ *
+ * Mandates: The expression *lhs == rhs is well-formed and its result is convertible to bool.
+ *
+ * Returns: If lhs is valueless, false; otherwise *lhs == rhs.
+ */
+
+TEST(IndirectTest, EqualityOperatorWithValueEqual) {
+    using T = SimpleType;
+    indirect<T> lhs(std::in_place, 42);
+    T           rhs(42);
+
+    EXPECT_TRUE(lhs == rhs);
+    EXPECT_FALSE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorWithValueNotEqual) {
+    using T = SimpleType;
+    indirect<T> lhs(std::in_place, 42);
+    T           rhs(99);
+
+    EXPECT_FALSE(lhs == rhs);
+    EXPECT_TRUE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorWithValueWhenValueless) {
+    using T = SimpleType;
+    indirect<T> lhs(std::in_place, 42);
+    T           rhs(42);
+
+    // Make lhs valueless
+    indirect<T> temp(std::move(lhs));
+
+    EXPECT_TRUE(lhs.valueless_after_move());
+
+    // Valueless indirect should not equal any value
+    EXPECT_FALSE(lhs == rhs);
+    EXPECT_TRUE(lhs != rhs);
+}
+
+TEST(IndirectTest, EqualityOperatorWithValueSymmetry) {
+    using T = SimpleType;
+    indirect<T> ind(std::in_place, 42);
+    T           val(42);
+
+    // Test both directions (symmetry)
+    EXPECT_TRUE(ind == val);
+    EXPECT_TRUE(val == ind);
+    EXPECT_FALSE(ind != val);
+    EXPECT_FALSE(val != ind);
+}
+
+TEST(IndirectTest, EqualityOperatorWithCompositeValue) {
+    using T = Composite;
+    indirect<T> lhs(std::in_place, 10, 20, 30);
+    T           same(10, 20, 30);
+    T           different(40, 50, 60);
+
+    EXPECT_TRUE(lhs == same);
+    EXPECT_FALSE(lhs != same);
+    EXPECT_FALSE(lhs == different);
+    EXPECT_TRUE(lhs != different);
+}

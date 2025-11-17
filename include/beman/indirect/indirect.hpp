@@ -92,12 +92,13 @@ class indirect {
         }
 
         // Move constructing
-        scope_exit post_condition([&other]() {
+        finally post_condition([&other]() {
             // Post condition: other must be set to valueless regardless of exception state
             // Here destroy or deallocate could throw.
-            scope_exit _set_valueless([&other]() { other.p = nullptr; });
+            finally set_valueless([&other]() { other.p = nullptr; });
             // valueless check done already
             other.unchecked_destroy_and_deallocate();
+            set_valueless.invoke();
         });
 
         this->p = allocate_ptr();
@@ -319,18 +320,14 @@ class indirect {
 
         // 1. The allocator needs updating if
         //    allocator_traits<Allocator>::propagate_on_container_move_assignment::value is true.
-        constexpr auto need_update  = std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value;
-        auto           alloc_update = [&]() {
-            if (need_update) {
-                this->alloc = other.alloc;
-            }
-        };
+        constexpr auto need_update = std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value;
         // 2. If other is valueless, *this becomes valueless and the owned object in *this, if any,
         //    is destroyed using allocator_traits<Allocator>::destroy and then the storage is deallocated.
         if (other.valueless_after_move()) {
             this->checked_destroy_and_deallocate();
             this->p = nullptr;
-            alloc_update();
+            if (need_update)
+                this->alloc = other.alloc;
             return *this;
         }
         // 3. Otherwise, if alloc == other.alloc is true, swaps the owned objects in *this and other;
@@ -472,7 +469,12 @@ class indirect {
      * lhs.valueless_after_move() == rhs.valueless_after_move(); otherwise *lhs == *rhs.
      */
     template <class U, class AA>
-    friend constexpr bool operator==(const indirect& lhs, const indirect<U, AA>& rhs) noexcept(noexcept(*lhs == *rhs));
+    friend constexpr bool operator==(const indirect&        lhs,
+                                     const indirect<U, AA>& rhs) noexcept(noexcept(*lhs == *rhs)) {
+        if (lhs.valueless_after_move() || rhs.valueless_after_move())
+            return lhs.valueless_after_move() == rhs.valueless_after_move();
+        return *lhs == *rhs;
+    }
 
     /**
      * Mandates: The expression *lhs == rhs is well-formed and its result is convertible to bool.
@@ -480,7 +482,11 @@ class indirect {
      * Returns: If lhs is valueless, false; otherwise *lhs == rhs.
      */
     template <class U>
-    friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs));
+    friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs)) {
+        if (lhs.valueless_after_move())
+            return false;
+        return *lhs == rhs;
+    }
 
     /**
      * Returns: If lhs is valueless or rhs is valueless,
@@ -518,10 +524,12 @@ class indirect {
 
     // Exception safe utils and destroy+deallocate/ allocate+construct helpers:
 
+    // This is equivalent to a scope_exit
+    // Used as a "finally" block in java equivalent to enforce execution on exception
     template <typename lambda>
-    struct scope_exit {
-        constexpr explicit scope_exit(lambda&& f_) : f(f_) {}
-        constexpr ~scope_exit() { invoke(); }
+    struct finally {
+        constexpr explicit finally(lambda&& f_) : f(std::forward<lambda>(f_)) {}
+        constexpr ~finally() { invoke(); }
         constexpr void invoke() {
             if (!released)
                 f();
@@ -548,9 +556,10 @@ class indirect {
     // postcondition is guaranteed even when destroy throws
     constexpr void unchecked_destroy_and_deallocate() {
         // must deallocate whatever when we exit this function
-        scope_exit _must_deallocate([this]() { this->deallocate(); });
+        finally must_deallocate([this]() { this->deallocate(); });
         // destroy may throw
         destroy();
+        must_deallocate.invoke();
     }
 
     // Return a pointer to a new object constructed using this->alloc Allocator and args...
@@ -558,7 +567,7 @@ class indirect {
     // Note: pointer this->p is not updated.
     // Exception guarantee: no memory leak if construct throws
     template <class... Args>
-    constexpr pointer allocate_and_construct(Args&&... args) {
+    [[nodiscard]] constexpr pointer allocate_and_construct(Args&&... args) {
         auto target = std::allocator_traits<Allocator>::allocate(this->alloc, 1);
         try {
             std::allocator_traits<Allocator>::construct(this->alloc, target, std::forward<Args>(args)...);
