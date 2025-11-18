@@ -101,14 +101,7 @@ class indirect {
             set_valueless.invoke();
         });
 
-        this->p = allocate_ptr();
-
-        // We have to rewind allocation if there's exception here.
-        try {
-            this->construct(std::move(*other));
-        } catch (...) {
-            this->deallocate();
-        }
+        this->p = allocate_and_construct(std::move(*other));
 
         // satisfy post condition
         post_condition.invoke();
@@ -279,7 +272,17 @@ class indirect {
             return ptr;
         });
 
-        this->checked_destroy_and_deallocate();
+        try {
+            this->checked_destroy_and_deallocate();
+        } catch (...) {
+            // we need to deallocated new_ptr
+            auto    alloc = alloc_need_update ? other.alloc : this->alloc;
+            finally must_deallocate([&]() { std::allocator_traits<Allocator>::deallocate(alloc, new_ptr, 1); });
+            std::allocator_traits<Allocator>::destroy(alloc, new_ptr);
+            must_deallocate.invoke();
+            throw;
+        }
+
         // 6. If the allocator needs updating, the allocator in *this is replaced with a copy of the allocator
         // in other.
         if (alloc_need_update) {
