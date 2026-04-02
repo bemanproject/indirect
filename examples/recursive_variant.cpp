@@ -27,8 +27,8 @@ struct json_value {
         friend bool operator!=(const null_t&, const null_t&) { return false; }
     };
 
-    using array_t  = std::vector<indirect<json_value>>;
-    using object_t = std::map<std::string, indirect<json_value>>;
+    using array_t  = indirect<std::vector<json_value>>;
+    using object_t = indirect<std::map<std::string, json_value>>;
 
     std::variant<null_t, bool, double, std::string, array_t, object_t> data;
 
@@ -38,8 +38,8 @@ struct json_value {
     json_value(double d) : data(d) {}
     json_value(const char* s) : data(std::string(s)) {}
     json_value(std::string s) : data(std::move(s)) {}
-    json_value(array_t a) : data(std::move(a)) {}
-    json_value(object_t o) : data(std::move(o)) {}
+    json_value(std::vector<json_value> a) : data(array_t{std::in_place, std::move(a)}) {}
+    json_value(std::map<std::string, json_value> o) : data(object_t{std::in_place, std::move(o)}) {}
 
     friend bool operator==(const json_value& lhs, const json_value& rhs) { return lhs.data == rhs.data; }
     friend bool operator!=(const json_value& lhs, const json_value& rhs) { return !(lhs == rhs); }
@@ -59,19 +59,19 @@ std::ostream& operator<<(std::ostream& os, const json_value& v) {
                 os << '"' << val << '"';
             } else if constexpr (std::is_same_v<V, json_value::array_t>) {
                 os << '[';
-                for (std::size_t i = 0; i < val.size(); ++i) {
+                for (std::size_t i = 0; i < val->size(); ++i) {
                     if (i > 0)
                         os << ", ";
-                    os << *val[i];
+                    os << (*val)[i];
                 }
                 os << ']';
             } else if constexpr (std::is_same_v<V, json_value::object_t>) {
                 os << '{';
                 bool first = true;
-                for (const auto& [k, v] : val) {
+                for (const auto& [k, v] : *val) {
                     if (!first)
                         os << ", ";
-                    os << '"' << k << "\": " << *v;
+                    os << '"' << k << "\": " << v;
                     first = false;
                 }
                 os << '}';
@@ -84,15 +84,15 @@ std::ostream& operator<<(std::ostream& os, const json_value& v) {
 int main() {
     // Build a small JSON structure:
     //   {"name": "Alice", "scores": [10, 20, 30], "active": true}
-    json_value person(json_value::object_t{
-        {"name", indirect<json_value>("Alice")},
+    json_value person(std::map<std::string, json_value>{
+        {"name", json_value("Alice")},
         {"scores",
-         indirect<json_value>(json_value::array_t{
-             indirect<json_value>(10.0),
-             indirect<json_value>(20.0),
-             indirect<json_value>(30.0),
+         json_value(std::vector<json_value>{
+             json_value(10.0),
+             json_value(20.0),
+             json_value(30.0),
          })},
-        {"active", indirect<json_value>(true)},
+        {"active", json_value(true)},
     });
 
     std::cout << "person: " << person << "\n";
