@@ -59,8 +59,7 @@ using beman::indirect::indirect;
 
 struct json_value {
     struct null_t {
-        friend bool operator==(const null_t&, const null_t&) { return true; }
-        friend bool operator!=(const null_t&, const null_t&) { return false; }
+        bool operator==(const null_t&) const = default;
     };
 
     using array_t  = std::vector<indirect<json_value>>;
@@ -74,12 +73,7 @@ struct json_value {
     json_value(array_t a) : data(std::move(a)) {}
     json_value(object_t o) : data(std::move(o)) {}
 
-    friend bool operator==(const json_value& lhs, const json_value& rhs) {
-        return lhs.data == rhs.data;
-    }
-    friend bool operator!=(const json_value& lhs, const json_value& rhs) {
-        return !(lhs == rhs);
-    }
+    bool operator==(const json_value&) const = default;
 };
 
 json_value person(json_value::object_t{
