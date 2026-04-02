@@ -26,7 +26,7 @@ option(
 
 # for find of beman-install-library
 include(infra/cmake/beman-install-library.cmake)
-include(infra/cmake/features.cmake)
+include(cmake/features.cmake)
 
 # Feature detection
 beman_indirect_check_concepts(COMPILER_SUPPORTS_CONCEPTS)
