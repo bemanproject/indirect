@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <compare>
 #include <functional>
 #include <map>
@@ -89,15 +90,15 @@ TEST(IndirectTest, MoveAssignment) {
 
 TEST(IndirectTest, SelfCopyAssignment) {
     indirect<int> i(42);
-    auto& ref = i;
-    i = ref;
+    auto&         ref = i;
+    i                 = ref;
     EXPECT_EQ(*i, 42);
 }
 
 TEST(IndirectTest, SelfMoveAssignment) {
     indirect<int> i(42);
-    auto& ref = i;
-    i = std::move(ref);
+    auto&         ref = i;
+    i                 = std::move(ref);
     // Self-move: no effects per spec
     EXPECT_EQ(*i, 42);
 }
@@ -134,13 +135,13 @@ TEST(IndirectTest, DereferenceNonConst) {
 
 TEST(IndirectTest, DereferenceRvalue) {
     indirect<std::string> i("hello");
-    std::string s = *std::move(i);
+    std::string           s = *std::move(i);
     EXPECT_EQ(s, "hello");
 }
 
 TEST(IndirectTest, DereferenceConstRvalue) {
     const indirect<std::string> i("hello");
-    auto&& ref = *std::move(i);
+    auto&&                      ref = *std::move(i);
     static_assert(std::is_same_v<decltype(ref), const std::string&&>);
     EXPECT_EQ(ref, "hello");
 }
@@ -169,17 +170,18 @@ TEST(IndirectTest, ValuelessAfterMove) {
 }
 
 TEST(IndirectTest, GetAllocator) {
-    indirect<int> i;
+    indirect<int>         i;
     [[maybe_unused]] auto alloc = i.get_allocator();
     static_assert(std::is_same_v<decltype(alloc), std::allocator<int>>);
 }
 
 TEST(IndirectTest, ConstPropagation) {
-    indirect<int> i(42);
+    indirect<int>        i(42);
     const indirect<int>& ci = i;
     static_assert(std::is_same_v<decltype(*ci), const int&>);
     static_assert(std::is_same_v<decltype(*i), int&>);
-    static_assert(std::is_same_v<decltype(ci.operator->()), std::allocator_traits<std::allocator<int>>::const_pointer>);
+    static_assert(
+        std::is_same_v<decltype(ci.operator->()), std::allocator_traits<std::allocator<int>>::const_pointer>);
     static_assert(std::is_same_v<decltype(i.operator->()), std::allocator_traits<std::allocator<int>>::pointer>);
 }
 
@@ -286,7 +288,7 @@ TEST(IndirectTest, ComparisonWithValueValueless) {
 
 // Non-three-way-comparable type: only has == and <
 struct NonThreeWay {
-    int v;
+    int  v;
     bool operator==(const NonThreeWay& o) const { return v == o.v; }
     bool operator<(const NonThreeWay& o) const { return v < o.v; }
 };
@@ -303,7 +305,7 @@ TEST(IndirectTest, NonThreeWayComparableType) {
 
 // Cross-type comparison (indirect<int> vs indirect<double>)
 TEST(IndirectTest, CrossTypeComparison) {
-    indirect<int> a(1);
+    indirect<int>    a(1);
     indirect<double> b(1.0);
     indirect<double> c(2.0);
     EXPECT_TRUE(a == b);
@@ -315,21 +317,21 @@ TEST(IndirectTest, CrossTypeComparison) {
 // --- Hash ---
 
 TEST(IndirectTest, Hash) {
-    indirect<int> a(42);
+    indirect<int>            a(42);
     std::hash<indirect<int>> h;
     EXPECT_EQ(h(a), std::hash<int>{}(42));
 }
 
 TEST(IndirectTest, HashConsistency) {
-    indirect<int> a(42);
-    indirect<int> b(42);
+    indirect<int>            a(42);
+    indirect<int>            b(42);
     std::hash<indirect<int>> h;
     EXPECT_EQ(h(a), h(b));
 }
 
 TEST(IndirectTest, HashValueless) {
-    indirect<int> a(1);
-    indirect<int> b(std::move(a));
+    indirect<int>            a(1);
+    indirect<int>            b(std::move(a));
     std::hash<indirect<int>> h;
     EXPECT_EQ(h(a), static_cast<std::size_t>(-1));
 }
@@ -344,7 +346,7 @@ TEST(IndirectTest, DeductionGuideValue) {
 
 TEST(IndirectTest, DeductionGuideAllocator) {
     std::allocator<int> alloc;
-    indirect i(std::allocator_arg, alloc, 42);
+    indirect            i(std::allocator_arg, alloc, 42);
     static_assert(std::is_same_v<decltype(i), indirect<int, std::allocator<int>>>);
     EXPECT_EQ(*i, 42);
 }
@@ -353,40 +355,40 @@ TEST(IndirectTest, DeductionGuideAllocator) {
 
 TEST(IndirectTest, AllocatorExtendedDefault) {
     std::allocator<int> alloc;
-    indirect<int> i(std::allocator_arg, alloc);
+    indirect<int>       i(std::allocator_arg, alloc);
     EXPECT_EQ(*i, 0);
 }
 
 TEST(IndirectTest, AllocatorExtendedCopy) {
-    indirect<std::string> a("hello");
+    indirect<std::string>       a("hello");
     std::allocator<std::string> alloc;
-    indirect<std::string> b(std::allocator_arg, alloc, a);
+    indirect<std::string>       b(std::allocator_arg, alloc, a);
     EXPECT_EQ(*b, "hello");
 }
 
 TEST(IndirectTest, AllocatorExtendedMove) {
-    indirect<std::string> a("hello");
+    indirect<std::string>       a("hello");
     std::allocator<std::string> alloc;
-    indirect<std::string> b(std::allocator_arg, alloc, std::move(a));
+    indirect<std::string>       b(std::allocator_arg, alloc, std::move(a));
     EXPECT_EQ(*b, "hello");
     EXPECT_TRUE(a.valueless_after_move());
 }
 
 TEST(IndirectTest, AllocatorExtendedForwarding) {
     std::allocator<std::string> alloc;
-    indirect<std::string> i(std::allocator_arg, alloc, "hello");
+    indirect<std::string>       i(std::allocator_arg, alloc, "hello");
     EXPECT_EQ(*i, "hello");
 }
 
 TEST(IndirectTest, AllocatorExtendedInPlace) {
     std::allocator<std::string> alloc;
-    indirect<std::string> i(std::allocator_arg, alloc, std::in_place, 3, 'a');
+    indirect<std::string>       i(std::allocator_arg, alloc, std::in_place, 3, 'a');
     EXPECT_EQ(*i, "aaa");
 }
 
 TEST(IndirectTest, AllocatorExtendedInPlaceInitList) {
     std::allocator<std::vector<int>> alloc;
-    indirect<std::vector<int>> i(std::allocator_arg, alloc, std::in_place, {1, 2, 3});
+    indirect<std::vector<int>>       i(std::allocator_arg, alloc, std::in_place, {1, 2, 3});
     EXPECT_EQ((*i).size(), 3u);
 }
 
@@ -427,7 +429,7 @@ TEST(IndirectTest, MoveAssignFromValueless) {
 
 TEST(IndirectTest, MovePreservesPointerAddress) {
     indirect<int> a(42);
-    auto* addr = &*a;
+    auto*         addr = &*a;
     indirect<int> b(std::move(a));
     EXPECT_EQ(&*b, addr);
 }
@@ -435,12 +437,11 @@ TEST(IndirectTest, MovePreservesPointerAddress) {
 // --- Allocation tracking ---
 
 TEST(IndirectTest, CountAllocationsForDefaultConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
-        indirect<int, test::TrackingAllocator<int>> i(
-            std::allocator_arg,
-            test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter));
+        indirect<int, test::TrackingAllocator<int>> i(std::allocator_arg,
+                                                      test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter));
         EXPECT_EQ(alloc_counter, 1u);
         EXPECT_EQ(dealloc_counter, 0u);
     }
@@ -449,12 +450,11 @@ TEST(IndirectTest, CountAllocationsForDefaultConstruction) {
 }
 
 TEST(IndirectTest, CountAllocationsForForwardingConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         indirect<int, test::TrackingAllocator<int>> i(
-            std::allocator_arg,
-            test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
+            std::allocator_arg, test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
         EXPECT_EQ(alloc_counter, 1u);
         EXPECT_EQ(dealloc_counter, 0u);
     }
@@ -463,13 +463,11 @@ TEST(IndirectTest, CountAllocationsForForwardingConstruction) {
 }
 
 TEST(IndirectTest, CountAllocationsForInPlaceConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         indirect<int, test::TrackingAllocator<int>> i(
-            std::allocator_arg,
-            test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter),
-            std::in_place, 42);
+            std::allocator_arg, test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), std::in_place, 42);
         EXPECT_EQ(alloc_counter, 1u);
         EXPECT_EQ(dealloc_counter, 0u);
     }
@@ -478,12 +476,11 @@ TEST(IndirectTest, CountAllocationsForInPlaceConstruction) {
 }
 
 TEST(IndirectTest, CountAllocationsForCopyConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         indirect<int, test::TrackingAllocator<int>> i(
-            std::allocator_arg,
-            test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
+            std::allocator_arg, test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
         EXPECT_EQ(alloc_counter, 1u);
         auto j = i;
         EXPECT_EQ(alloc_counter, 2u);
@@ -493,12 +490,11 @@ TEST(IndirectTest, CountAllocationsForCopyConstruction) {
 }
 
 TEST(IndirectTest, CountAllocationsForMoveConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         indirect<int, test::TrackingAllocator<int>> i(
-            std::allocator_arg,
-            test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
+            std::allocator_arg, test::TrackingAllocator<int>(&alloc_counter, &dealloc_counter), 42);
         EXPECT_EQ(alloc_counter, 1u);
         auto j = std::move(i);
         // Move should not allocate
@@ -509,10 +505,10 @@ TEST(IndirectTest, CountAllocationsForMoveConstruction) {
 }
 
 TEST(IndirectTest, CountAllocationsForCopyAssignment) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
-        test::TrackingAllocator<int> alloc(&alloc_counter, &dealloc_counter);
+        test::TrackingAllocator<int>                alloc(&alloc_counter, &dealloc_counter);
         indirect<int, test::TrackingAllocator<int>> i(std::allocator_arg, alloc, 42);
         indirect<int, test::TrackingAllocator<int>> j(std::allocator_arg, alloc, 0);
         EXPECT_EQ(alloc_counter, 2u);
@@ -524,10 +520,10 @@ TEST(IndirectTest, CountAllocationsForCopyAssignment) {
 }
 
 TEST(IndirectTest, CountAllocationsForMoveAssignment) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
-        test::TrackingAllocator<int> alloc(&alloc_counter, &dealloc_counter);
+        test::TrackingAllocator<int>                alloc(&alloc_counter, &dealloc_counter);
         indirect<int, test::TrackingAllocator<int>> i(std::allocator_arg, alloc, 42);
         indirect<int, test::TrackingAllocator<int>> j(std::allocator_arg, alloc, 0);
         EXPECT_EQ(alloc_counter, 2u);
@@ -542,13 +538,11 @@ TEST(IndirectTest, CountAllocationsForMoveAssignment) {
 // --- Exception safety ---
 
 TEST(IndirectTest, ConstructorExceptionCleansUpAllocation) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
-    auto construct = [&]() {
-        return indirect<test::ThrowsOnConstruction,
-                        test::TrackingAllocator<test::ThrowsOnConstruction>>(
-            std::allocator_arg,
-            test::TrackingAllocator<test::ThrowsOnConstruction>(&alloc_counter, &dealloc_counter));
+    auto     construct       = [&]() {
+        return indirect<test::ThrowsOnConstruction, test::TrackingAllocator<test::ThrowsOnConstruction>>(
+            std::allocator_arg, test::TrackingAllocator<test::ThrowsOnConstruction>(&alloc_counter, &dealloc_counter));
     };
     EXPECT_THROW(construct(), test::ThrowsOnConstruction::Exception);
     EXPECT_EQ(alloc_counter, 1u);
@@ -556,8 +550,8 @@ TEST(IndirectTest, ConstructorExceptionCleansUpAllocation) {
 }
 
 TEST(IndirectTest, CopyConstructionExceptionSafety) {
-    unsigned alloc_counter = 0;
-    unsigned dealloc_counter = 0;
+    unsigned                                    alloc_counter   = 0;
+    unsigned                                    dealloc_counter = 0;
     test::TrackingAllocator<test::ThrowsOnCopy> alloc(&alloc_counter, &dealloc_counter);
     // Construct via move (doesn't throw)
     indirect<test::ThrowsOnCopy, test::TrackingAllocator<test::ThrowsOnCopy>> i(
@@ -572,9 +566,9 @@ TEST(IndirectTest, CopyConstructionExceptionSafety) {
 // --- Non-equal allocator tests ---
 
 TEST(IndirectTest, MoveConstructionWithNonEqualAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::NonEqualTrackingAllocator<int> alloc1(&alloc_counter1, &dealloc_counter1);
@@ -590,9 +584,9 @@ TEST(IndirectTest, MoveConstructionWithNonEqualAllocator) {
 }
 
 TEST(IndirectTest, MoveAssignmentWithNonEqualAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::NonEqualTrackingAllocator<int> alloc1(&alloc_counter1, &dealloc_counter1);
@@ -611,15 +605,15 @@ TEST(IndirectTest, MoveAssignmentWithNonEqualAllocator) {
 // --- Tagged allocator tests ---
 
 TEST(IndirectTest, TaggedAllocatorGetAllocator) {
-    test::TaggedAllocator<int> alloc(42);
+    test::TaggedAllocator<int>                alloc(42);
     indirect<int, test::TaggedAllocator<int>> i(std::allocator_arg, alloc, 7);
     EXPECT_EQ(i.get_allocator().tag, 42u);
 }
 
 TEST(IndirectTest, TaggedAllocatorCopyUsesSelectOnContainerCopyConstruction) {
-    test::TaggedAllocator<int> alloc(42);
+    test::TaggedAllocator<int>                alloc(42);
     indirect<int, test::TaggedAllocator<int>> i(std::allocator_arg, alloc, 7);
-    auto j = i;
+    auto                                      j = i;
     // select_on_container_copy_construction for default allocator just copies the allocator
     EXPECT_EQ(j.get_allocator().tag, 42u);
     EXPECT_EQ(*j, 7);
@@ -670,9 +664,9 @@ TEST(IndirectTest, InteractionWithUnorderedMap) {
 // --- Swap with allocator propagation ---
 
 TEST(IndirectTest, SwapWithPOCSAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::POCSTrackingAllocator<int> alloc1(&alloc_counter1, &dealloc_counter1);
@@ -690,30 +684,29 @@ TEST(IndirectTest, SwapWithPOCSAllocator) {
 // --- PMR alias ---
 
 TEST(IndirectTest, PmrAlias) {
-    std::array<std::byte, 256> buffer{};
+    std::array<std::byte, 256>          buffer{};
     std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
-    beman::indirect::pmr::indirect<int> i(std::allocator_arg,
-                                          std::pmr::polymorphic_allocator<int>(&resource), 42);
+    beman::indirect::pmr::indirect<int> i(std::allocator_arg, std::pmr::polymorphic_allocator<int>(&resource), 42);
     EXPECT_EQ(*i, 42);
 }
 
 TEST(IndirectTest, PmrInVector) {
-    std::array<std::byte, 4096> buffer{};
-    std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
+    std::array<std::byte, 4096>                                          buffer{};
+    std::pmr::monotonic_buffer_resource                                  resource(buffer.data(), buffer.size());
     std::pmr::polymorphic_allocator<beman::indirect::pmr::indirect<int>> alloc(&resource);
 
     std::pmr::vector<beman::indirect::pmr::indirect<int>> v(alloc);
-    v.push_back(beman::indirect::pmr::indirect<int>(
-        std::allocator_arg, std::pmr::polymorphic_allocator<int>(&resource), 1));
-    v.push_back(beman::indirect::pmr::indirect<int>(
-        std::allocator_arg, std::pmr::polymorphic_allocator<int>(&resource), 2));
+    v.push_back(
+        beman::indirect::pmr::indirect<int>(std::allocator_arg, std::pmr::polymorphic_allocator<int>(&resource), 1));
+    v.push_back(
+        beman::indirect::pmr::indirect<int>(std::allocator_arg, std::pmr::polymorphic_allocator<int>(&resource), 2));
     EXPECT_EQ(*v[0], 1);
     EXPECT_EQ(*v[1], 2);
 }
 
 TEST(IndirectTest, PmrVectorPropagatesAllocatorToIndirectElements) {
-    std::array<std::byte, 4096> buffer{};
-    std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
+    std::array<std::byte, 4096>                                          buffer{};
+    std::pmr::monotonic_buffer_resource                                  resource(buffer.data(), buffer.size());
     std::pmr::polymorphic_allocator<beman::indirect::pmr::indirect<int>> alloc(&resource);
 
     std::pmr::vector<beman::indirect::pmr::indirect<int>> v(alloc);
@@ -728,8 +721,8 @@ TEST(IndirectTest, PmrVectorPropagatesAllocatorToIndirectElements) {
 }
 
 TEST(IndirectTest, PmrIndirectPropagatesAllocatorToInnerVector) {
-    std::array<std::byte, 4096> buffer{};
-    std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
+    std::array<std::byte, 4096>                            buffer{};
+    std::pmr::monotonic_buffer_resource                    resource(buffer.data(), buffer.size());
     std::pmr::polymorphic_allocator<std::pmr::vector<int>> alloc(&resource);
 
     beman::indirect::pmr::indirect<std::pmr::vector<int>> i(

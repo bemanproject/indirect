@@ -12,7 +12,7 @@ int main() {
 
     // Copy creates an independent deep copy.
     auto copy = greeting;
-    *copy = "Hello, copy!";
+    *copy     = "Hello, copy!";
     std::cout << "Original: " << *greeting << "\n";
     std::cout << "Copy: " << *copy << "\n";
 

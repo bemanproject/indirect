@@ -80,22 +80,23 @@ class indirect {
         }
     }
 
-    constexpr indirect(indirect&& other) noexcept : alloc_(std::move(other.alloc_)), p_(other.p_) {
+    constexpr indirect(indirect&& other) noexcept : p_(other.p_), alloc_(std::move(other.alloc_)) {
         other.p_ = nullptr;
     }
 
-    constexpr indirect(std::allocator_arg_t, const Allocator& a, indirect&& other) noexcept(
-        alloc_traits::is_always_equal::value)
+    constexpr indirect(std::allocator_arg_t,
+                       const Allocator& a,
+                       indirect&&       other) noexcept(alloc_traits::is_always_equal::value)
         : alloc_(a) {
         static_assert(alloc_traits::is_always_equal::value || detail::is_complete_v<T>);
         if (other.valueless_after_move()) {
             // *this is valueless
         } else if constexpr (alloc_traits::is_always_equal::value) {
-            p_ = other.p_;
+            p_       = other.p_;
             other.p_ = nullptr;
         } else {
             if (alloc_ == other.alloc_) {
-                p_ = other.p_;
+                p_       = other.p_;
                 other.p_ = nullptr;
             } else {
                 p_ = construct_from(alloc_, std::move(*other));
@@ -106,8 +107,8 @@ class indirect {
 
     template <class U = T>
         requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> &&
-                 !std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
-                 std::is_constructible_v<T, U> && std::is_default_constructible_v<Allocator>)
+                 !std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U> &&
+                 std::is_default_constructible_v<Allocator>)
     constexpr explicit indirect(U&& u) {
         p_ = construct_from(alloc_, std::forward<U>(u));
     }
@@ -127,8 +128,7 @@ class indirect {
 
     template <class... Us>
         requires(std::is_constructible_v<T, Us...>)
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us)
-        : alloc_(a) {
+    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
         p_ = construct_from(alloc_, std::forward<Us>(us)...);
     }
 
@@ -141,8 +141,8 @@ class indirect {
 
     template <class I, class... Us>
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t,
-                                std::initializer_list<I> ilist, Us&&... us)
+    constexpr explicit indirect(
+        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
         p_ = construct_from(alloc_, ilist, std::forward<Us>(us)...);
     }
@@ -162,8 +162,8 @@ class indirect {
         if (std::addressof(other) == this)
             return *this;
 
-        constexpr bool pocca = alloc_traits::propagate_on_container_copy_assignment::value;
-        Allocator alloc_for_construction = pocca ? other.alloc_ : alloc_;
+        constexpr bool pocca                  = alloc_traits::propagate_on_container_copy_assignment::value;
+        Allocator      alloc_for_construction = pocca ? other.alloc_ : alloc_;
 
         if (other.valueless_after_move()) {
             reset();
@@ -182,9 +182,9 @@ class indirect {
         return *this;
     }
 
-    constexpr indirect& operator=(indirect&& other) noexcept(
-        alloc_traits::propagate_on_container_move_assignment::value ||
-        alloc_traits::is_always_equal::value) {
+    constexpr indirect&
+    operator=(indirect&& other) noexcept(alloc_traits::propagate_on_container_move_assignment::value ||
+                                         alloc_traits::is_always_equal::value) {
         static_assert(alloc_traits::propagate_on_container_move_assignment::value ||
                           alloc_traits::is_always_equal::value || std::is_move_constructible_v<T>,
                       "T must be move constructible when allocators may not be equal");
@@ -197,7 +197,7 @@ class indirect {
             reset();
         } else if (pocma || alloc_ == other.alloc_) {
             reset();
-            p_ = other.p_;
+            p_       = other.p_;
             other.p_ = nullptr;
         } else {
             // Allocators differ and don't propagate: must move-construct
@@ -264,10 +264,9 @@ class indirect {
     // [indirect.swap] swap
 
     constexpr void swap(indirect& other) noexcept(alloc_traits::propagate_on_container_swap::value ||
-                                                   alloc_traits::is_always_equal::value) {
+                                                  alloc_traits::is_always_equal::value) {
         // Precondition: allocators must be equal when they don't propagate on swap.
-        assert(alloc_traits::propagate_on_container_swap::value ||
-               alloc_ == other.alloc_);
+        assert(alloc_traits::propagate_on_container_swap::value || alloc_ == other.alloc_);
         using std::swap;
         swap(p_, other.p_);
         if constexpr (alloc_traits::propagate_on_container_swap::value) {
@@ -275,14 +274,12 @@ class indirect {
         }
     }
 
-    friend constexpr void swap(indirect& lhs, indirect& rhs) noexcept(noexcept(lhs.swap(rhs))) {
-        lhs.swap(rhs);
-    }
+    friend constexpr void swap(indirect& lhs, indirect& rhs) noexcept(noexcept(lhs.swap(rhs))) { lhs.swap(rhs); }
 
     // [indirect.relops] relational operators
 
     template <class U, class AA>
-    friend constexpr bool operator==(const indirect& lhs,
+    friend constexpr bool operator==(const indirect&        lhs,
                                      const indirect<U, AA>& rhs) noexcept(noexcept(*lhs == *rhs)) {
         if (lhs.valueless_after_move() || rhs.valueless_after_move())
             return lhs.valueless_after_move() == rhs.valueless_after_move();
@@ -301,8 +298,7 @@ class indirect {
 
     template <class U>
         requires(!detail::is_indirect_v<U>)
-    friend constexpr bool operator==(const indirect& lhs,
-                                     const U& rhs) noexcept(noexcept(*lhs == rhs)) {
+    friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs)) {
         if (lhs.valueless_after_move())
             return false;
         return *lhs == rhs;
@@ -341,7 +337,7 @@ class indirect {
         }
     }
 
-    pointer                            p_     = pointer();
+    pointer                         p_     = pointer();
     [[no_unique_address]] Allocator alloc_ = Allocator();
 };
 

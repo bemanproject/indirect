@@ -2,8 +2,7 @@
 
 target_sources(
     beman.indirect
-    PUBLIC FILE_SET HEADERS FILES
-        indirect.hpp
-        polymorphic.hpp
-        detail/synth_three_way.hpp
+    PUBLIC
+        FILE_SET HEADERS
+            FILES indirect.hpp polymorphic.hpp detail/synth_three_way.hpp
 )

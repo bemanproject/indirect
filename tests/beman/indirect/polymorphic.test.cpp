@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <map>
 #include <memory>
 #include <memory_resource>
@@ -21,14 +22,14 @@ using beman::indirect::polymorphic;
 
 // Test hierarchy
 struct Base {
-    virtual ~Base()                    = default;
-    virtual int         value() const  = 0;
-    virtual std::string name() const   = 0;
-    Base()                             = default;
-    Base(const Base&)                  = default;
-    Base(Base&&)                       = default;
-    Base& operator=(const Base&)       = default;
-    Base& operator=(Base&&)            = default;
+    virtual ~Base()                   = default;
+    virtual int         value() const = 0;
+    virtual std::string name() const  = 0;
+    Base()                            = default;
+    Base(const Base&)                 = default;
+    Base(Base&&)                      = default;
+    Base& operator=(const Base&)      = default;
+    Base& operator=(Base&&)           = default;
 };
 
 struct Derived : Base {
@@ -47,13 +48,13 @@ struct Derived2 : Base {
 
 // Non-abstract base for default construction test
 struct SimpleBase {
-    virtual ~SimpleBase()                      = default;
-    virtual int value() const                  { return 0; }
-    SimpleBase()                               = default;
-    SimpleBase(const SimpleBase&)              = default;
-    SimpleBase(SimpleBase&&)                   = default;
-    SimpleBase& operator=(const SimpleBase&)   = default;
-    SimpleBase& operator=(SimpleBase&&)        = default;
+    virtual ~SimpleBase() = default;
+    virtual int value() const { return 0; }
+    SimpleBase()                             = default;
+    SimpleBase(const SimpleBase&)            = default;
+    SimpleBase(SimpleBase&&)                 = default;
+    SimpleBase& operator=(const SimpleBase&) = default;
+    SimpleBase& operator=(SimpleBase&&)      = default;
 };
 
 struct SimpleDerived : SimpleBase {
@@ -164,15 +165,15 @@ TEST(PolymorphicTest, MoveAssignment) {
 
 TEST(PolymorphicTest, SelfCopyAssignment) {
     polymorphic<Base> p(Derived(42));
-    auto& ref = p;
-    p = ref;
+    auto&             ref = p;
+    p                     = ref;
     EXPECT_EQ((*p).value(), 42);
 }
 
 TEST(PolymorphicTest, SelfMoveAssignment) {
     polymorphic<Base> p(Derived(42));
-    auto& ref = p;
-    p = std::move(ref);
+    auto&             ref = p;
+    p                     = std::move(ref);
     EXPECT_EQ((*p).value(), 42);
 }
 
@@ -247,13 +248,13 @@ TEST(PolymorphicTest, ValuelessAfterMove) {
 }
 
 TEST(PolymorphicTest, GetAllocator) {
-    polymorphic<Base> p(Derived(1));
+    polymorphic<Base>     p(Derived(1));
     [[maybe_unused]] auto alloc = p.get_allocator();
     static_assert(std::is_same_v<decltype(alloc), std::allocator<Base>>);
 }
 
 TEST(PolymorphicTest, ConstPropagation) {
-    polymorphic<Base> p(Derived(42));
+    polymorphic<Base>        p(Derived(42));
     const polymorphic<Base>& cp = p;
     static_assert(std::is_same_v<decltype(*cp), const Base&>);
     static_assert(std::is_same_v<decltype(*p), Base&>);
@@ -339,13 +340,13 @@ TEST(PolymorphicTest, DerivedWithAdditionalData) {
 // --- Multiple inheritance ---
 
 struct Interface1 {
-    virtual ~Interface1()          = default;
-    virtual int value1() const     = 0;
-    Interface1()                   = default;
-    Interface1(const Interface1&)  = default;
-    Interface1(Interface1&&)       = default;
+    virtual ~Interface1()                    = default;
+    virtual int value1() const               = 0;
+    Interface1()                             = default;
+    Interface1(const Interface1&)            = default;
+    Interface1(Interface1&&)                 = default;
     Interface1& operator=(const Interface1&) = default;
-    Interface1& operator=(Interface1&&) = default;
+    Interface1& operator=(Interface1&&)      = default;
 };
 
 struct MultiDerived : Interface1 {
@@ -366,41 +367,41 @@ TEST(PolymorphicTest, MultipleInheritanceSupport) {
 
 TEST(PolymorphicTest, AllocatorExtendedDefault) {
     std::allocator<SimpleBase> alloc;
-    polymorphic<SimpleBase> p(std::allocator_arg, alloc);
+    polymorphic<SimpleBase>    p(std::allocator_arg, alloc);
     EXPECT_EQ((*p).value(), 0);
 }
 
 TEST(PolymorphicTest, AllocatorExtendedFromDerived) {
     std::allocator<Base> alloc;
-    polymorphic<Base> p(std::allocator_arg, alloc, Derived(42));
+    polymorphic<Base>    p(std::allocator_arg, alloc, Derived(42));
     EXPECT_EQ((*p).value(), 42);
 }
 
 TEST(PolymorphicTest, AllocatorExtendedCopy) {
-    polymorphic<Base> a(Derived(42));
+    polymorphic<Base>    a(Derived(42));
     std::allocator<Base> alloc;
-    polymorphic<Base> b(std::allocator_arg, alloc, a);
+    polymorphic<Base>    b(std::allocator_arg, alloc, a);
     EXPECT_EQ((*b).value(), 42);
     EXPECT_EQ((*b).name(), "Derived");
 }
 
 TEST(PolymorphicTest, AllocatorExtendedMove) {
-    polymorphic<Base> a(Derived(42));
+    polymorphic<Base>    a(Derived(42));
     std::allocator<Base> alloc;
-    polymorphic<Base> b(std::allocator_arg, alloc, std::move(a));
+    polymorphic<Base>    b(std::allocator_arg, alloc, std::move(a));
     EXPECT_EQ((*b).value(), 42);
     EXPECT_TRUE(a.valueless_after_move());
 }
 
 TEST(PolymorphicTest, AllocatorExtendedInPlaceType) {
     std::allocator<Base> alloc;
-    polymorphic<Base> p(std::allocator_arg, alloc, std::in_place_type<Derived>, 99);
+    polymorphic<Base>    p(std::allocator_arg, alloc, std::in_place_type<Derived>, 99);
     EXPECT_EQ((*p).value(), 99);
 }
 
 TEST(PolymorphicTest, AllocatorExtendedInPlaceTypeInitList) {
     std::allocator<SimpleBase> alloc;
-    polymorphic<SimpleBase> p(std::allocator_arg, alloc, std::in_place_type<WithInitList>, {1, 2, 3});
+    polymorphic<SimpleBase>    p(std::allocator_arg, alloc, std::in_place_type<WithInitList>, {1, 2, 3});
     EXPECT_EQ((*p).value(), 3);
 }
 
@@ -425,8 +426,8 @@ TEST(PolymorphicTest, CopyAssignFromValueless) {
 
 // Polymorphic base for allocator tests - must be copyable
 struct AllocBase {
-    virtual ~AllocBase()                   = default;
-    virtual int val() const                { return 0; }
+    virtual ~AllocBase() = default;
+    virtual int val() const { return 0; }
     AllocBase()                            = default;
     AllocBase(const AllocBase&)            = default;
     AllocBase(AllocBase&&)                 = default;
@@ -441,12 +442,11 @@ struct AllocDerived : AllocBase {
 };
 
 TEST(PolymorphicTest, CountAllocationsForDefaultConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
-            std::allocator_arg,
-            test::TrackingAllocator<AllocBase>(&alloc_counter, &dealloc_counter));
+            std::allocator_arg, test::TrackingAllocator<AllocBase>(&alloc_counter, &dealloc_counter));
         EXPECT_EQ(alloc_counter, 1u);
         EXPECT_EQ(dealloc_counter, 0u);
     }
@@ -455,7 +455,7 @@ TEST(PolymorphicTest, CountAllocationsForDefaultConstruction) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForDerivedConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
@@ -470,13 +470,14 @@ TEST(PolymorphicTest, CountAllocationsForDerivedConstruction) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForInPlaceTypeConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
             std::allocator_arg,
             test::TrackingAllocator<AllocBase>(&alloc_counter, &dealloc_counter),
-            std::in_place_type<AllocDerived>, 42);
+            std::in_place_type<AllocDerived>,
+            42);
         EXPECT_EQ(alloc_counter, 1u);
         EXPECT_EQ(dealloc_counter, 0u);
     }
@@ -484,7 +485,7 @@ TEST(PolymorphicTest, CountAllocationsForInPlaceTypeConstruction) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForCopyConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
@@ -500,7 +501,7 @@ TEST(PolymorphicTest, CountAllocationsForCopyConstruction) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForMoveConstruction) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
         polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
@@ -517,14 +518,12 @@ TEST(PolymorphicTest, CountAllocationsForMoveConstruction) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForCopyAssignment) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
-        test::TrackingAllocator<AllocBase> alloc(&alloc_counter, &dealloc_counter);
-        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
-            std::allocator_arg, alloc, AllocDerived(42));
-        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> q(
-            std::allocator_arg, alloc, AllocDerived(0));
+        test::TrackingAllocator<AllocBase>                         alloc(&alloc_counter, &dealloc_counter);
+        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(std::allocator_arg, alloc, AllocDerived(42));
+        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> q(std::allocator_arg, alloc, AllocDerived(0));
         EXPECT_EQ(alloc_counter, 2u);
         q = p;
         // Copy assignment: clone new + destroy old
@@ -535,14 +534,12 @@ TEST(PolymorphicTest, CountAllocationsForCopyAssignment) {
 }
 
 TEST(PolymorphicTest, CountAllocationsForMoveAssignment) {
-    unsigned alloc_counter = 0;
+    unsigned alloc_counter   = 0;
     unsigned dealloc_counter = 0;
     {
-        test::TrackingAllocator<AllocBase> alloc(&alloc_counter, &dealloc_counter);
-        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(
-            std::allocator_arg, alloc, AllocDerived(42));
-        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> q(
-            std::allocator_arg, alloc, AllocDerived(0));
+        test::TrackingAllocator<AllocBase>                         alloc(&alloc_counter, &dealloc_counter);
+        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> p(std::allocator_arg, alloc, AllocDerived(42));
+        polymorphic<AllocBase, test::TrackingAllocator<AllocBase>> q(std::allocator_arg, alloc, AllocDerived(0));
         EXPECT_EQ(alloc_counter, 2u);
         q = std::move(p);
         // Move assign with equal allocators: takes ownership, destroys old
@@ -555,38 +552,34 @@ TEST(PolymorphicTest, CountAllocationsForMoveAssignment) {
 // --- Non-equal allocator tests ---
 
 TEST(PolymorphicTest, MoveConstructionWithNonEqualAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::NonEqualTrackingAllocator<AllocBase> alloc1(&alloc_counter1, &dealloc_counter1);
     test::NonEqualTrackingAllocator<AllocBase> alloc2(&alloc_counter2, &dealloc_counter2);
 
-    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> p(
-        std::allocator_arg, alloc1, AllocDerived(42));
+    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> p(std::allocator_arg, alloc1, AllocDerived(42));
     EXPECT_EQ(alloc_counter1, 1u);
 
     // Allocator-extended move with non-equal allocator: must move_clone
-    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> q(
-        std::allocator_arg, alloc2, std::move(p));
+    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> q(std::allocator_arg, alloc2, std::move(p));
     EXPECT_EQ(alloc_counter2, 1u);
     EXPECT_EQ((*q).val(), 42);
 }
 
 TEST(PolymorphicTest, MoveAssignmentWithNonEqualAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::NonEqualTrackingAllocator<AllocBase> alloc1(&alloc_counter1, &dealloc_counter1);
     test::NonEqualTrackingAllocator<AllocBase> alloc2(&alloc_counter2, &dealloc_counter2);
 
-    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> p(
-        std::allocator_arg, alloc1, AllocDerived(42));
-    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> q(
-        std::allocator_arg, alloc2, AllocDerived(0));
+    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> p(std::allocator_arg, alloc1, AllocDerived(42));
+    polymorphic<AllocBase, test::NonEqualTrackingAllocator<AllocBase>> q(std::allocator_arg, alloc2, AllocDerived(0));
 
     // NonEqualTrackingAllocator propagates on move assignment
     q = std::move(p);
@@ -597,17 +590,15 @@ TEST(PolymorphicTest, MoveAssignmentWithNonEqualAllocator) {
 // --- Tagged allocator tests ---
 
 TEST(PolymorphicTest, TaggedAllocatorGetAllocator) {
-    test::TaggedAllocator<Base> alloc(42);
-    polymorphic<Base, test::TaggedAllocator<Base>> p(
-        std::allocator_arg, alloc, Derived(7));
+    test::TaggedAllocator<Base>                    alloc(42);
+    polymorphic<Base, test::TaggedAllocator<Base>> p(std::allocator_arg, alloc, Derived(7));
     EXPECT_EQ(p.get_allocator().tag, 42u);
 }
 
 TEST(PolymorphicTest, TaggedAllocatorCopy) {
-    test::TaggedAllocator<Base> alloc(42);
-    polymorphic<Base, test::TaggedAllocator<Base>> p(
-        std::allocator_arg, alloc, Derived(7));
-    auto q = p;
+    test::TaggedAllocator<Base>                    alloc(42);
+    polymorphic<Base, test::TaggedAllocator<Base>> p(std::allocator_arg, alloc, Derived(7));
+    auto                                           q = p;
     EXPECT_EQ(q.get_allocator().tag, 42u);
     EXPECT_EQ((*q).value(), 7);
 }
@@ -648,18 +639,16 @@ TEST(PolymorphicTest, InteractionWithMap) {
 // --- Swap with POCS allocator ---
 
 TEST(PolymorphicTest, SwapWithPOCSAllocator) {
-    unsigned alloc_counter1 = 0;
+    unsigned alloc_counter1   = 0;
     unsigned dealloc_counter1 = 0;
-    unsigned alloc_counter2 = 0;
+    unsigned alloc_counter2   = 0;
     unsigned dealloc_counter2 = 0;
 
     test::POCSTrackingAllocator<AllocBase> alloc1(&alloc_counter1, &dealloc_counter1);
     test::POCSTrackingAllocator<AllocBase> alloc2(&alloc_counter2, &dealloc_counter2);
 
-    polymorphic<AllocBase, test::POCSTrackingAllocator<AllocBase>> a(
-        std::allocator_arg, alloc1, AllocDerived(1));
-    polymorphic<AllocBase, test::POCSTrackingAllocator<AllocBase>> b(
-        std::allocator_arg, alloc2, AllocDerived(2));
+    polymorphic<AllocBase, test::POCSTrackingAllocator<AllocBase>> a(std::allocator_arg, alloc1, AllocDerived(1));
+    polymorphic<AllocBase, test::POCSTrackingAllocator<AllocBase>> b(std::allocator_arg, alloc2, AllocDerived(2));
 
     a.swap(b);
     EXPECT_EQ((*a).val(), 2);
@@ -670,13 +659,13 @@ TEST(PolymorphicTest, SwapWithPOCSAllocator) {
 
 // PMR-compatible base for testing
 struct PmrBase {
-    virtual ~PmrBase()                   = default;
-    virtual int val() const              { return 0; }
-    PmrBase()                            = default;
-    PmrBase(const PmrBase&)              = default;
-    PmrBase(PmrBase&&)                   = default;
-    PmrBase& operator=(const PmrBase&)   = default;
-    PmrBase& operator=(PmrBase&&)        = default;
+    virtual ~PmrBase() = default;
+    virtual int val() const { return 0; }
+    PmrBase()                          = default;
+    PmrBase(const PmrBase&)            = default;
+    PmrBase(PmrBase&&)                 = default;
+    PmrBase& operator=(const PmrBase&) = default;
+    PmrBase& operator=(PmrBase&&)      = default;
 };
 
 struct PmrDerived : PmrBase {
@@ -686,22 +675,19 @@ struct PmrDerived : PmrBase {
 };
 
 TEST(PolymorphicTest, PmrAlias) {
-    std::array<std::byte, 256> buffer{};
-    std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
+    std::array<std::byte, 256>                 buffer{};
+    std::pmr::monotonic_buffer_resource        resource(buffer.data(), buffer.size());
     beman::indirect::pmr::polymorphic<PmrBase> p(
-        std::allocator_arg,
-        std::pmr::polymorphic_allocator<PmrBase>(&resource),
-        PmrDerived(42));
+        std::allocator_arg, std::pmr::polymorphic_allocator<PmrBase>(&resource), PmrDerived(42));
     EXPECT_EQ((*p).val(), 42);
 }
 
 TEST(PolymorphicTest, PmrCopy) {
-    std::array<std::byte, 1024> buffer{};
-    std::pmr::monotonic_buffer_resource resource(buffer.data(), buffer.size());
-    std::pmr::polymorphic_allocator<PmrBase> alloc(&resource);
-    beman::indirect::pmr::polymorphic<PmrBase> p(
-        std::allocator_arg, alloc, PmrDerived(42));
-    auto q = p;
+    std::array<std::byte, 1024>                buffer{};
+    std::pmr::monotonic_buffer_resource        resource(buffer.data(), buffer.size());
+    std::pmr::polymorphic_allocator<PmrBase>   alloc(&resource);
+    beman::indirect::pmr::polymorphic<PmrBase> p(std::allocator_arg, alloc, PmrDerived(42));
+    auto                                       q = p;
     EXPECT_EQ((*q).val(), 42);
 }
 

@@ -45,8 +45,7 @@ struct TrackingAllocator {
     }
 
     friend bool operator==(const TrackingAllocator& lhs, const TrackingAllocator& rhs) noexcept {
-        return lhs.alloc_counter_ == rhs.alloc_counter_ &&
-               lhs.dealloc_counter_ == rhs.dealloc_counter_;
+        return lhs.alloc_counter_ == rhs.alloc_counter_ && lhs.dealloc_counter_ == rhs.dealloc_counter_;
     }
 
     friend bool operator!=(const TrackingAllocator& lhs, const TrackingAllocator& rhs) noexcept {
@@ -58,9 +57,9 @@ struct TrackingAllocator {
 // Propagates on copy/move assignment so operations can proceed.
 template <class T>
 struct NonEqualTrackingAllocator {
-    using value_type                                = T;
-    using propagate_on_container_copy_assignment     = std::true_type;
-    using propagate_on_container_move_assignment     = std::true_type;
+    using value_type                             = T;
+    using propagate_on_container_copy_assignment = std::true_type;
+    using propagate_on_container_move_assignment = std::true_type;
 
     unsigned* alloc_counter_;
     unsigned* dealloc_counter_;
@@ -103,8 +102,8 @@ struct NonEqualTrackingAllocator {
 // TrackingAllocator variant with propagate_on_container_swap.
 template <class T>
 struct POCSTrackingAllocator {
-    using value_type                        = T;
-    using propagate_on_container_swap       = std::true_type;
+    using value_type                  = T;
+    using propagate_on_container_swap = std::true_type;
 
     unsigned* alloc_counter_;
     unsigned* dealloc_counter_;
@@ -136,8 +135,7 @@ struct POCSTrackingAllocator {
     }
 
     friend bool operator==(const POCSTrackingAllocator& lhs, const POCSTrackingAllocator& rhs) noexcept {
-        return lhs.alloc_counter_ == rhs.alloc_counter_ &&
-               lhs.dealloc_counter_ == rhs.dealloc_counter_;
+        return lhs.alloc_counter_ == rhs.alloc_counter_ && lhs.dealloc_counter_ == rhs.dealloc_counter_;
     }
 
     friend bool operator!=(const POCSTrackingAllocator& lhs, const POCSTrackingAllocator& rhs) noexcept {
@@ -175,9 +173,7 @@ struct TaggedAllocator {
         return lhs.tag == rhs.tag;
     }
 
-    friend bool operator!=(const TaggedAllocator& lhs, const TaggedAllocator& rhs) noexcept {
-        return !(lhs == rhs);
-    }
+    friend bool operator!=(const TaggedAllocator& lhs, const TaggedAllocator& rhs) noexcept { return !(lhs == rhs); }
 };
 
 // Type that throws on construction.

@@ -6,14 +6,14 @@
 #include <string>
 
 struct Shape {
-    virtual ~Shape()              = default;
-    virtual double area() const   = 0;
+    virtual ~Shape()                 = default;
+    virtual double      area() const = 0;
     virtual std::string name() const = 0;
-    Shape()                       = default;
-    Shape(const Shape&)           = default;
-    Shape(Shape&&)                = default;
-    Shape& operator=(const Shape&) = default;
-    Shape& operator=(Shape&&)     = default;
+    Shape()                          = default;
+    Shape(const Shape&)              = default;
+    Shape(Shape&&)                   = default;
+    Shape& operator=(const Shape&)   = default;
+    Shape& operator=(Shape&&)        = default;
 };
 
 struct Circle : Shape {

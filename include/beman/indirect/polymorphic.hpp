@@ -30,7 +30,7 @@ struct control_block {
     T* p_;
 
     virtual control_block* clone(const Allocator& alloc) const = 0;
-    virtual control_block* move_clone(const Allocator& alloc) = 0;
+    virtual control_block* move_clone(const Allocator& alloc)  = 0;
     virtual void           destroy(Allocator& alloc) noexcept  = 0;
 
   protected:
@@ -44,7 +44,7 @@ struct direct_control_block final : control_block<T, Allocator> {
     using cb_traits = std::allocator_traits<cb_alloc>;
 
     union storage {
-        U      value;
+        U value;
         storage() {}
         ~storage() {}
     } storage_;
@@ -150,17 +150,18 @@ class polymorphic {
         other.cb_ = nullptr;
     }
 
-    constexpr polymorphic(std::allocator_arg_t, const Allocator& a, polymorphic&& other) noexcept(
-        alloc_traits::is_always_equal::value)
+    constexpr polymorphic(std::allocator_arg_t,
+                          const Allocator& a,
+                          polymorphic&&    other) noexcept(alloc_traits::is_always_equal::value)
         : alloc_(a) {
         if (other.valueless_after_move()) {
             // *this is valueless
         } else if constexpr (alloc_traits::is_always_equal::value) {
-            cb_ = other.cb_;
+            cb_       = other.cb_;
             other.cb_ = nullptr;
         } else {
             if (alloc_ == other.alloc_) {
-                cb_ = other.cb_;
+                cb_       = other.cb_;
                 other.cb_ = nullptr;
             } else {
                 cb_ = other.cb_->move_clone(alloc_);
@@ -171,19 +172,16 @@ class polymorphic {
 
     template <class U = T>
         requires(!std::is_same_v<std::remove_cvref_t<U>, polymorphic> &&
-                 std::derived_from<std::remove_cvref_t<U>, T> &&
-                 std::is_constructible_v<std::remove_cvref_t<U>, U> &&
+                 std::derived_from<std::remove_cvref_t<U>, T> && std::is_constructible_v<std::remove_cvref_t<U>, U> &&
                  std::is_copy_constructible_v<std::remove_cvref_t<U>> &&
-                 !detail::is_in_place_type_v<std::remove_cvref_t<U>> &&
-                 std::is_default_constructible_v<Allocator>)
+                 !detail::is_in_place_type_v<std::remove_cvref_t<U>> && std::is_default_constructible_v<Allocator>)
     constexpr explicit polymorphic(U&& u) {
         cb_ = make_cb<std::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
     }
 
     template <class U = T>
         requires(!std::is_same_v<std::remove_cvref_t<U>, polymorphic> &&
-                 std::derived_from<std::remove_cvref_t<U>, T> &&
-                 std::is_constructible_v<std::remove_cvref_t<U>, U> &&
+                 std::derived_from<std::remove_cvref_t<U>, T> && std::is_constructible_v<std::remove_cvref_t<U>, U> &&
                  std::is_copy_constructible_v<std::remove_cvref_t<U>> &&
                  !detail::is_in_place_type_v<std::remove_cvref_t<U>>)
     constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
@@ -201,26 +199,24 @@ class polymorphic {
     template <class U, class... Ts>
         requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
                  std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U>)
-    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>,
-                                   Ts&&... ts)
+    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, Ts&&... ts)
         : alloc_(a) {
         cb_ = make_cb<U>(alloc_, std::forward<Ts>(ts)...);
     }
 
     template <class U, class I, class... Us>
         requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
-                 std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
-                 std::is_copy_constructible_v<U> && std::is_default_constructible_v<Allocator>)
+                 std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U> &&
+                 std::is_default_constructible_v<Allocator>)
     constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
 
     template <class U, class I, class... Us>
         requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
-                 std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
-                 std::is_copy_constructible_v<U>)
-    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>,
-                                   std::initializer_list<I> ilist, Us&&... us)
+                 std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U>)
+    constexpr explicit polymorphic(
+        std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
@@ -239,8 +235,8 @@ class polymorphic {
         if (std::addressof(other) == this)
             return *this;
 
-        constexpr bool pocca = alloc_traits::propagate_on_container_copy_assignment::value;
-        Allocator alloc_for_construction = pocca ? other.alloc_ : alloc_;
+        constexpr bool pocca                  = alloc_traits::propagate_on_container_copy_assignment::value;
+        Allocator      alloc_for_construction = pocca ? other.alloc_ : alloc_;
 
         cb_type* new_cb = nullptr;
         if (!other.valueless_after_move()) {
@@ -255,9 +251,9 @@ class polymorphic {
         return *this;
     }
 
-    constexpr polymorphic& operator=(polymorphic&& other) noexcept(
-        alloc_traits::propagate_on_container_move_assignment::value ||
-        alloc_traits::is_always_equal::value) {
+    constexpr polymorphic&
+    operator=(polymorphic&& other) noexcept(alloc_traits::propagate_on_container_move_assignment::value ||
+                                            alloc_traits::is_always_equal::value) {
         static_assert(alloc_traits::propagate_on_container_move_assignment::value ||
                           alloc_traits::is_always_equal::value || detail::is_complete_v<T>,
                       "T must be complete when allocators may not be equal");
@@ -270,7 +266,7 @@ class polymorphic {
             reset();
         } else if (pocma || alloc_ == other.alloc_) {
             reset();
-            cb_ = other.cb_;
+            cb_       = other.cb_;
             other.cb_ = nullptr;
         } else {
             cb_type* new_cb = other.cb_->move_clone(alloc_);
@@ -313,12 +309,10 @@ class polymorphic {
 
     // [polymorphic.swap] swap
 
-    constexpr void
-    swap(polymorphic& other) noexcept(alloc_traits::propagate_on_container_swap::value ||
-                                      alloc_traits::is_always_equal::value) {
+    constexpr void swap(polymorphic& other) noexcept(alloc_traits::propagate_on_container_swap::value ||
+                                                     alloc_traits::is_always_equal::value) {
         // Precondition: allocators must be equal when they don't propagate on swap.
-        assert(alloc_traits::propagate_on_container_swap::value ||
-               alloc_ == other.alloc_);
+        assert(alloc_traits::propagate_on_container_swap::value || alloc_ == other.alloc_);
         using std::swap;
         swap(cb_, other.cb_);
         if constexpr (alloc_traits::propagate_on_container_swap::value) {
@@ -326,9 +320,7 @@ class polymorphic {
         }
     }
 
-    friend constexpr void swap(polymorphic& lhs, polymorphic& rhs) noexcept(noexcept(lhs.swap(rhs))) {
-        lhs.swap(rhs);
-    }
+    friend constexpr void swap(polymorphic& lhs, polymorphic& rhs) noexcept(noexcept(lhs.swap(rhs))) { lhs.swap(rhs); }
 
   private:
     template <class U, class... Args>
