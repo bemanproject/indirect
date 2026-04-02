@@ -62,25 +62,26 @@ struct json_value {
         bool operator==(const null_t&) const = default;
     };
 
-    using array_t  = std::vector<indirect<json_value>>;
-    using object_t = std::map<std::string, indirect<json_value>>;
+    using array_t  = indirect<std::vector<json_value>>;
+    using object_t = indirect<std::map<std::string, json_value>>;
 
     std::variant<null_t, bool, double, std::string, array_t, object_t> data;
 
     json_value() : data(null_t{}) {}
     json_value(double d) : data(d) {}
+    json_value(const char* s) : data(std::string(s)) {}
     json_value(std::string s) : data(std::move(s)) {}
-    json_value(array_t a) : data(std::move(a)) {}
-    json_value(object_t o) : data(std::move(o)) {}
+    json_value(std::vector<json_value> a) : data(array_t{std::in_place, std::move(a)}) {}
+    json_value(std::map<std::string, json_value> o) : data(object_t{std::in_place, std::move(o)}) {}
 
     bool operator==(const json_value&) const = default;
 };
 
-json_value person(json_value::object_t{
-    {"name", indirect<json_value>(std::string("Alice"))},
-    {"scores", indirect<json_value>(json_value::array_t{
-        indirect<json_value>(10.0),
-        indirect<json_value>(20.0),
+json_value person(std::map<std::string, json_value>{
+    {"name", json_value("Alice")},
+    {"scores", json_value(std::vector<json_value>{
+        json_value(10.0),
+        json_value(20.0),
     })},
 });
 

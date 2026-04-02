@@ -13,10 +13,7 @@ int main() {}
 "
         HAVE_CONCEPTS
     )
-    set(${result_var}
-        ${HAVE_CONCEPTS}
-        PARENT_SCOPE
-    )
+    set(${result_var} ${HAVE_CONCEPTS} PARENT_SCOPE)
 endfunction()
 
 function(beman_indirect_check_three_way_comparison result_var)
@@ -34,10 +31,7 @@ int main() {
 "
         HAVE_THREE_WAY
     )
-    set(${result_var}
-        ${HAVE_THREE_WAY}
-        PARENT_SCOPE
-    )
+    set(${result_var} ${HAVE_THREE_WAY} PARENT_SCOPE)
 endfunction()
 
 function(beman_indirect_check_constexpr_destructor result_var)
@@ -50,10 +44,7 @@ int main() { S s; }
 "
         HAVE_CONSTEXPR_DTOR
     )
-    set(${result_var}
-        ${HAVE_CONSTEXPR_DTOR}
-        PARENT_SCOPE
-    )
+    set(${result_var} ${HAVE_CONSTEXPR_DTOR} PARENT_SCOPE)
 endfunction()
 
 function(beman_indirect_check_no_unique_address result_var)
@@ -69,8 +60,5 @@ int main() {}
 "
         HAVE_NO_UNIQUE_ADDRESS
     )
-    set(${result_var}
-        ${HAVE_NO_UNIQUE_ADDRESS}
-        PARENT_SCOPE
-    )
+    set(${result_var} ${HAVE_NO_UNIQUE_ADDRESS} PARENT_SCOPE)
 endfunction()
