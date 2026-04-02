@@ -41,12 +41,8 @@ struct json_value {
     json_value(array_t a) : data(std::move(a)) {}
     json_value(object_t o) : data(std::move(o)) {}
 
-    friend bool operator==(const json_value& lhs, const json_value& rhs) {
-        return lhs.data == rhs.data;
-    }
-    friend bool operator!=(const json_value& lhs, const json_value& rhs) {
-        return !(lhs == rhs);
-    }
+    friend bool operator==(const json_value& lhs, const json_value& rhs) { return lhs.data == rhs.data; }
+    friend bool operator!=(const json_value& lhs, const json_value& rhs) { return !(lhs == rhs); }
 };
 
 std::ostream& operator<<(std::ostream& os, const json_value& v) {
