@@ -3,10 +3,10 @@
 #ifndef BEMAN_INDIRECT_POLYMORPHIC_HPP
 #define BEMAN_INDIRECT_POLYMORPHIC_HPP
 
+#include <beman/indirect/detail/config.hpp>
 #include <beman/indirect/detail/synth_three_way.hpp>
 
 #include <cassert>
-#include <concepts>
 #include <initializer_list>
 #include <memory>
 #include <memory_resource>
@@ -51,7 +51,7 @@ struct direct_control_block final : control_block<T, Allocator> {
 
     template <class... Args>
     explicit direct_control_block(Args&&... args) {
-        std::construct_at(std::addressof(storage_.value), std::forward<Args>(args)...);
+        detail::construct_at_impl(std::addressof(storage_.value), std::forward<Args>(args)...);
         this->p_ = std::addressof(storage_.value);
     }
 
@@ -119,9 +119,14 @@ class polymorphic {
 
     // [polymorphic.ctor] constructors
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     constexpr explicit polymorphic()
         requires std::is_default_constructible_v<Allocator>
     {
+#else
+    template <class Alloc_ = Allocator, std::enable_if_t<std::is_default_constructible_v<Alloc_>, int> = 0>
+    constexpr explicit polymorphic() {
+#endif
         static_assert(std::is_default_constructible_v<T>);
         static_assert(std::is_copy_constructible_v<T>);
         cb_ = make_cb<T>(alloc_);
@@ -170,60 +175,129 @@ class polymorphic {
         }
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U = T>
-        requires(!std::is_same_v<std::remove_cvref_t<U>, polymorphic> &&
-                 std::derived_from<std::remove_cvref_t<U>, T> && std::is_constructible_v<std::remove_cvref_t<U>, U> &&
-                 std::is_copy_constructible_v<std::remove_cvref_t<U>> &&
-                 !detail::is_in_place_type_v<std::remove_cvref_t<U>> && std::is_default_constructible_v<Allocator>)
+        requires(!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
+                 detail::derived_from_v<detail::remove_cvref_t<U>, T> &&
+                 std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
+                 std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
+                 !detail::is_in_place_type_v<detail::remove_cvref_t<U>> && std::is_default_constructible_v<Allocator>)
     constexpr explicit polymorphic(U&& u) {
-        cb_ = make_cb<std::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
+#else
+    template <class U               = T,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
+                                   detail::derived_from_v<detail::remove_cvref_t<U>, T> &&
+                                   std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
+                                   std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
+                                   !detail::is_in_place_type_v<detail::remove_cvref_t<U>> &&
+                                   std::is_default_constructible_v<Allocator>,
+                               int> = 0>
+    constexpr explicit polymorphic(U&& u) {
+#endif
+        cb_ = make_cb<detail::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U = T>
-        requires(!std::is_same_v<std::remove_cvref_t<U>, polymorphic> &&
-                 std::derived_from<std::remove_cvref_t<U>, T> && std::is_constructible_v<std::remove_cvref_t<U>, U> &&
-                 std::is_copy_constructible_v<std::remove_cvref_t<U>> &&
-                 !detail::is_in_place_type_v<std::remove_cvref_t<U>>)
+        requires(!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
+                 detail::derived_from_v<detail::remove_cvref_t<U>, T> &&
+                 std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
+                 std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
+                 !detail::is_in_place_type_v<detail::remove_cvref_t<U>>)
     constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
-        cb_ = make_cb<std::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
+#else
+    template <class U               = T,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
+                                   detail::derived_from_v<detail::remove_cvref_t<U>, T> &&
+                                   std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
+                                   std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
+                                   !detail::is_in_place_type_v<detail::remove_cvref_t<U>>,
+                               int> = 0>
+    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
+#endif
+        cb_ = make_cb<detail::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U, class... Ts>
-        requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
+        requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U> &&
                  std::is_default_constructible_v<Allocator>)
     constexpr explicit polymorphic(std::in_place_type_t<U>, Ts&&... ts) {
+#else
+    template <class U,
+              class... Ts,
+              std::enable_if_t<std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
+                                   std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U> &&
+                                   std::is_default_constructible_v<Allocator>,
+                               int> = 0>
+    constexpr explicit polymorphic(std::in_place_type_t<U>, Ts&&... ts) {
+#endif
         cb_ = make_cb<U>(alloc_, std::forward<Ts>(ts)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U, class... Ts>
-        requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
+        requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U>)
     constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, Ts&&... ts)
         : alloc_(a) {
+#else
+    template <class U,
+              class... Ts,
+              std::enable_if_t<std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
+                                   std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U>,
+                               int> = 0>
+    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, Ts&&... ts)
+        : alloc_(a) {
+#endif
         cb_ = make_cb<U>(alloc_, std::forward<Ts>(ts)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U, class I, class... Us>
-        requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
+        requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U> &&
                  std::is_default_constructible_v<Allocator>)
     constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
+#else
+    template <class U,
+              class I,
+              class... Us,
+              std::enable_if_t<std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
+                                   std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
+                                   std::is_copy_constructible_v<U> && std::is_default_constructible_v<Allocator>,
+                               int> = 0>
+    constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
+#endif
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U, class I, class... Us>
-        requires(std::is_same_v<std::remove_cvref_t<U>, U> && std::derived_from<U, T> &&
+        requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U>)
     constexpr explicit polymorphic(
         std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
+#else
+    template <class U,
+              class I,
+              class... Us,
+              std::enable_if_t<std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
+                                   std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
+                                   std::is_copy_constructible_v<U>,
+                               int> = 0>
+    constexpr explicit polymorphic(
+        std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us)
+        : alloc_(a) {
+#endif
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
 
     // [polymorphic.dtor] destructor
 
-    constexpr ~polymorphic() {
+    BEMAN_INDIRECT_CONSTEXPR_DTOR ~polymorphic() {
         static_assert(detail::is_complete_v<T>);
         reset();
     }
@@ -343,8 +417,8 @@ class polymorphic {
         }
     }
 
-    [[no_unique_address]] Allocator alloc_ = Allocator();
-    cb_type*                        cb_    = nullptr;
+    BEMAN_INDIRECT_NO_UNIQUE_ADDRESS Allocator alloc_ = Allocator();
+    cb_type*                                   cb_    = nullptr;
 };
 
 } // namespace beman::indirect

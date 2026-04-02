@@ -3,11 +3,10 @@
 #ifndef BEMAN_INDIRECT_INDIRECT_HPP
 #define BEMAN_INDIRECT_INDIRECT_HPP
 
+#include <beman/indirect/detail/config.hpp>
 #include <beman/indirect/detail/synth_three_way.hpp>
 
 #include <cassert>
-#include <compare>
-#include <concepts>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -53,9 +52,14 @@ class indirect {
 
     // [indirect.ctor] constructors
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     constexpr explicit indirect()
         requires std::is_default_constructible_v<Allocator>
     {
+#else
+    template <class Alloc_ = Allocator, std::enable_if_t<std::is_default_constructible_v<Alloc_>, int> = 0>
+    constexpr explicit indirect() {
+#endif
         static_assert(std::is_default_constructible_v<T>);
         p_ = construct_from(alloc_);
     }
@@ -105,51 +109,99 @@ class indirect {
         }
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U = T>
-        requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> &&
-                 !std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U> &&
+        requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
+                 !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U> &&
                  std::is_default_constructible_v<Allocator>)
     constexpr explicit indirect(U&& u) {
+#else
+    template <class U               = T,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
+                                   !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> &&
+                                   std::is_constructible_v<T, U> && std::is_default_constructible_v<Allocator>,
+                               int> = 0>
+    constexpr explicit indirect(U&& u) {
+#endif
         p_ = construct_from(alloc_, std::forward<U>(u));
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U = T>
-        requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> &&
-                 !std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U>)
+        requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
+                 !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U>)
     constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
+#else
+    template <class U               = T,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
+                                   !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> &&
+                                   std::is_constructible_v<T, U>,
+                               int> = 0>
+    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
+#endif
         p_ = construct_from(alloc_, std::forward<U>(u));
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class... Us>
         requires(std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>)
     constexpr explicit indirect(std::in_place_t, Us&&... us) {
+#else
+    template <
+        class... Us,
+        std::enable_if_t<std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>, int> = 0>
+    constexpr explicit indirect(std::in_place_t, Us&&... us) {
+#endif
         p_ = construct_from(alloc_, std::forward<Us>(us)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class... Us>
         requires(std::is_constructible_v<T, Us...>)
     constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
+#else
+    template <class... Us, std::enable_if_t<std::is_constructible_v<T, Us...>, int> = 0>
+    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
+#endif
         p_ = construct_from(alloc_, std::forward<Us>(us)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class I, class... Us>
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
                  std::is_default_constructible_v<Allocator>)
     constexpr explicit indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
+#else
+    template <class I,
+              class... Us,
+              std::enable_if_t<std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
+                                   std::is_default_constructible_v<Allocator>,
+                               int> = 0>
+    constexpr explicit indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
+#endif
         p_ = construct_from(alloc_, ilist, std::forward<Us>(us)...);
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class I, class... Us>
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
     constexpr explicit indirect(
         std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
+#else
+    template <class I,
+              class... Us,
+              std::enable_if_t<std::is_constructible_v<T, std::initializer_list<I>&, Us...>, int> = 0>
+    constexpr explicit indirect(
+        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
+        : alloc_(a) {
+#endif
         p_ = construct_from(alloc_, ilist, std::forward<Us>(us)...);
     }
 
     // [indirect.dtor] destructor
 
-    constexpr ~indirect() {
+    BEMAN_INDIRECT_CONSTEXPR_DTOR ~indirect() {
         static_assert(detail::is_complete_v<T>);
         reset();
     }
@@ -213,10 +265,18 @@ class indirect {
         return *this;
     }
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U = T>
-        requires(!std::is_same_v<std::remove_cvref_t<U>, indirect> && std::is_constructible_v<T, U> &&
+        requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> && std::is_constructible_v<T, U> &&
                  std::is_assignable_v<T&, U>)
     constexpr indirect& operator=(U&& u) {
+#else
+    template <class U               = T,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> && std::is_constructible_v<T, U> &&
+                                   std::is_assignable_v<T&, U>,
+                               int> = 0>
+    constexpr indirect& operator=(U&& u) {
+#endif
         if (valueless_after_move()) {
             p_ = construct_from(alloc_, std::forward<U>(u));
         } else {
@@ -286,6 +346,7 @@ class indirect {
         return *lhs == *rhs;
     }
 
+#if BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
     template <class U, class AA>
     friend constexpr auto operator<=>(const indirect& lhs, const indirect<U, AA>& rhs)
         -> detail::synth_three_way_result<T, U> {
@@ -293,9 +354,38 @@ class indirect {
             return !lhs.valueless_after_move() <=> !rhs.valueless_after_move();
         return detail::synth_three_way(*lhs, *rhs);
     }
+#else
+    template <class U, class AA>
+    friend constexpr bool operator!=(const indirect& lhs, const indirect<U, AA>& rhs) noexcept(noexcept(lhs == rhs)) {
+        return !(lhs == rhs);
+    }
+
+    template <class U, class AA>
+    friend constexpr bool operator<(const indirect& lhs, const indirect<U, AA>& rhs) {
+        if (lhs.valueless_after_move() || rhs.valueless_after_move())
+            return !lhs.valueless_after_move() < !rhs.valueless_after_move();
+        return *lhs < *rhs;
+    }
+
+    template <class U, class AA>
+    friend constexpr bool operator>(const indirect& lhs, const indirect<U, AA>& rhs) {
+        return rhs < lhs;
+    }
+
+    template <class U, class AA>
+    friend constexpr bool operator<=(const indirect& lhs, const indirect<U, AA>& rhs) {
+        return !(rhs < lhs);
+    }
+
+    template <class U, class AA>
+    friend constexpr bool operator>=(const indirect& lhs, const indirect<U, AA>& rhs) {
+        return !(lhs < rhs);
+    }
+#endif // BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
 
     // [indirect.comp.with.t] comparison with T
 
+#if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U>
         requires(!detail::is_indirect_v<U>)
     friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs)) {
@@ -303,7 +393,76 @@ class indirect {
             return false;
         return *lhs == rhs;
     }
+#else
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator==(const indirect& lhs, const U& rhs) noexcept(noexcept(*lhs == rhs)) {
+        if (lhs.valueless_after_move())
+            return false;
+        return *lhs == rhs;
+    }
 
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator==(const U& lhs, const indirect& rhs) noexcept(noexcept(rhs == lhs)) {
+        return rhs == lhs;
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator!=(const indirect& lhs, const U& rhs) noexcept(noexcept(lhs == rhs)) {
+        return !(lhs == rhs);
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator!=(const U& lhs, const indirect& rhs) noexcept(noexcept(rhs == lhs)) {
+        return !(rhs == lhs);
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator<(const indirect& lhs, const U& rhs) {
+        if (lhs.valueless_after_move())
+            return true;
+        return *lhs < rhs;
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator<(const U& lhs, const indirect& rhs) {
+        return rhs > lhs;
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator>(const indirect& lhs, const U& rhs) {
+        if (lhs.valueless_after_move())
+            return false;
+        return *lhs > rhs;
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator>(const U& lhs, const indirect& rhs) {
+        return rhs < lhs;
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator<=(const indirect& lhs, const U& rhs) {
+        return !(lhs > rhs);
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator<=(const U& lhs, const indirect& rhs) {
+        return !(lhs > rhs);
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator>=(const indirect& lhs, const U& rhs) {
+        return !(lhs < rhs);
+    }
+
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr bool operator>=(const U& lhs, const indirect& rhs) {
+        return !(lhs < rhs);
+    }
+#endif // BEMAN_INDIRECT_USE_CONCEPTS
+
+#if BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
+    #if BEMAN_INDIRECT_USE_CONCEPTS
     template <class U>
         requires(!detail::is_indirect_v<U>)
     friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) {
@@ -311,13 +470,22 @@ class indirect {
             return detail::synth_three_way_result<T, U>(std::strong_ordering::less);
         return detail::synth_three_way(*lhs, rhs);
     }
+    #else
+    template <class U, std::enable_if_t<!detail::is_indirect_v<U>, int> = 0>
+    friend constexpr auto operator<=>(const indirect& lhs, const U& rhs) {
+        if (lhs.valueless_after_move())
+            return detail::synth_three_way_result<T, U>(std::strong_ordering::less);
+        return detail::synth_three_way(*lhs, rhs);
+    }
+    #endif // BEMAN_INDIRECT_USE_CONCEPTS
+#endif     // BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
 
   private:
     template <class... Args>
     static constexpr pointer construct_from(Allocator& a, Args&&... args) {
         pointer p = alloc_traits::allocate(a, 1);
         try {
-            alloc_traits::construct(a, std::to_address(p), std::forward<Args>(args)...);
+            alloc_traits::construct(a, detail::to_address_impl(p), std::forward<Args>(args)...);
         } catch (...) {
             alloc_traits::deallocate(a, p, 1);
             throw;
@@ -326,7 +494,7 @@ class indirect {
     }
 
     static constexpr void destroy_with(Allocator& a, pointer p) {
-        alloc_traits::destroy(a, std::to_address(p));
+        alloc_traits::destroy(a, detail::to_address_impl(p));
         alloc_traits::deallocate(a, p, 1);
     }
 
@@ -337,8 +505,8 @@ class indirect {
         }
     }
 
-    pointer                         p_     = pointer();
-    [[no_unique_address]] Allocator alloc_ = Allocator();
+    pointer                                    p_     = pointer();
+    BEMAN_INDIRECT_NO_UNIQUE_ADDRESS Allocator alloc_ = Allocator();
 };
 
 // Deduction guides
@@ -352,6 +520,7 @@ indirect(std::allocator_arg_t, Allocator, Value)
 } // namespace beman::indirect
 
 // [indirect.hash] Hash support
+#if BEMAN_INDIRECT_USE_CONCEPTS
 template <class T, class Allocator>
     requires std::is_default_constructible_v<std::hash<T>>
 struct std::hash<beman::indirect::indirect<T, Allocator>> {
@@ -362,6 +531,18 @@ struct std::hash<beman::indirect::indirect<T, Allocator>> {
         return std::hash<T>{}(*i);
     }
 };
+#else
+template <class T, class Allocator>
+struct std::hash<beman::indirect::indirect<T, Allocator>> {
+    template <class U = T, std::enable_if_t<std::is_default_constructible_v<std::hash<U>>, int> = 0>
+    constexpr std::size_t operator()(const beman::indirect::indirect<T, Allocator>& i) const
+        noexcept(noexcept(std::hash<T>{}(*i))) {
+        if (i.valueless_after_move())
+            return static_cast<std::size_t>(-1);
+        return std::hash<T>{}(*i);
+    }
+};
+#endif
 
 namespace beman::indirect::pmr {
 

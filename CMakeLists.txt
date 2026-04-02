@@ -26,13 +26,51 @@ option(
 
 # for find of beman-install-library
 include(infra/cmake/beman-install-library.cmake)
+include(infra/cmake/features.cmake)
+
+# Feature detection
+beman_indirect_check_concepts(COMPILER_SUPPORTS_CONCEPTS)
+beman_indirect_check_three_way_comparison(COMPILER_SUPPORTS_THREE_WAY)
+beman_indirect_check_constexpr_destructor(COMPILER_SUPPORTS_CONSTEXPR_DTOR)
+beman_indirect_check_no_unique_address(COMPILER_SUPPORTS_NO_UNIQUE_ADDRESS)
+
+option(
+    BEMAN_INDIRECT_USE_CONCEPTS
+    "Make use of C++20 concepts. Turn this off for non-conforming compilers."
+    ${COMPILER_SUPPORTS_CONCEPTS}
+)
+option(
+    BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
+    "Make use of C++20 three-way comparison (<=>). Turn this off for non-conforming compilers."
+    ${COMPILER_SUPPORTS_THREE_WAY}
+)
+option(
+    BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR
+    "Make use of C++20 constexpr destructors. Turn this off for non-conforming compilers."
+    ${COMPILER_SUPPORTS_CONSTEXPR_DTOR}
+)
+option(
+    BEMAN_INDIRECT_USE_NO_UNIQUE_ADDRESS
+    "Make use of C++20 [[no_unique_address]]. Turn this off for non-conforming compilers."
+    ${COMPILER_SUPPORTS_NO_UNIQUE_ADDRESS}
+)
+
+configure_file(
+    "${PROJECT_SOURCE_DIR}/include/beman/indirect/detail/config.hpp.in"
+    "${PROJECT_BINARY_DIR}/include/beman/indirect/detail/config.hpp"
+    @ONLY
+)
 
 add_library(beman.indirect INTERFACE)
 add_library(beman::indirect ALIAS beman.indirect)
 
 target_sources(
     beman.indirect
-    PUBLIC FILE_SET HEADERS BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PUBLIC
+        FILE_SET HEADERS
+            BASE_DIRS
+                "${CMAKE_CURRENT_SOURCE_DIR}/include"
+                "${PROJECT_BINARY_DIR}/include"
 )
 
 set_target_properties(

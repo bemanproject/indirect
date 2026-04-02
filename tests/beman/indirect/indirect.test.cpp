@@ -6,8 +6,12 @@
 
 #include <gtest/gtest.h>
 
+#include <beman/indirect/detail/config.hpp>
+
 #include <array>
-#include <compare>
+#if BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
+    #include <compare>
+#endif
 #include <functional>
 #include <map>
 #include <memory>
