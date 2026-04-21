@@ -32,6 +32,8 @@ include(cmake/features.cmake)
 beman_indirect_check_concepts(COMPILER_SUPPORTS_CONCEPTS)
 beman_indirect_check_three_way_comparison(COMPILER_SUPPORTS_THREE_WAY)
 beman_indirect_check_constexpr_destructor(COMPILER_SUPPORTS_CONSTEXPR_DTOR)
+beman_indirect_check_constexpr_virtual(COMPILER_SUPPORTS_CONSTEXPR_VIRTUAL)
+beman_indirect_check_constexpr_polymorphic_eval(COMPILER_SUPPORTS_CONSTEXPR_POLYMORPHIC_EVAL)
 beman_indirect_check_no_unique_address(COMPILER_SUPPORTS_NO_UNIQUE_ADDRESS)
 
 option(
@@ -48,6 +50,16 @@ option(
     BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR
     "Make use of C++20 constexpr destructors. Turn this off for non-conforming compilers."
     ${COMPILER_SUPPORTS_CONSTEXPR_DTOR}
+)
+option(
+    BEMAN_INDIRECT_USE_CONSTEXPR_VIRTUAL
+    "Make use of C++20 constexpr virtual functions. Turn this off for non-conforming compilers."
+    ${COMPILER_SUPPORTS_CONSTEXPR_VIRTUAL}
+)
+option(
+    BEMAN_INDIRECT_USE_CONSTEXPR_POLYMORPHIC_EVAL
+    "Constexpr evaluation of polymorphic types works end-to-end. Turn this off for compilers with known bugs (e.g. GCC 11/12)."
+    ${COMPILER_SUPPORTS_CONSTEXPR_POLYMORPHIC_EVAL}
 )
 option(
     BEMAN_INDIRECT_USE_NO_UNIQUE_ADDRESS
