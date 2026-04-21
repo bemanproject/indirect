@@ -739,4 +739,196 @@ TEST(IndirectTest, PmrIndirectPropagatesAllocatorToInnerVector) {
     EXPECT_EQ((*i)[2], 3);
 }
 
+#if __cplusplus >= 202002L && BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR
+
+// Helper for constexpr arrow operator tests
+struct CxFoo {
+    int x = 42;
+};
+
+// Default construction
+static_assert([] {
+    indirect<int> i;
+    return !i.valueless_after_move() && *i == 0;
+}());
+
+// Forwarding construction
+static_assert([] {
+    indirect<int> i(42);
+    return *i == 42;
+}());
+
+// In-place construction
+static_assert([] {
+    indirect<int> i(std::in_place, 42);
+    return *i == 42;
+}());
+
+// Copy construction preserves value
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(i);
+    return *i == 42 && *j == 42;
+}());
+
+// Copy construction produces independent copy
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(i);
+    *j = 99;
+    return *i == 42 && *j == 99;
+}());
+
+// Move construction leaves source valueless
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(std::move(i));
+    return i.valueless_after_move() && *j == 42;
+}());
+
+// Copy assignment
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(0);
+    j = i;
+    return *i == 42 && *j == 42;
+}());
+
+// Move assignment leaves source valueless
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(0);
+    j = std::move(i);
+    return i.valueless_after_move() && *j == 42;
+}());
+
+// Self-copy assignment preserves value
+static_assert([] {
+    indirect<int> i(42);
+    auto&         ref = i;
+    i                 = ref;
+    return *i == 42;
+}());
+
+// Dereference and modify
+static_assert([] {
+    indirect<int> i(42);
+    *i = 99;
+    return *i == 99;
+}());
+
+// Const dereference
+static_assert([] {
+    const indirect<int> i(42);
+    return *i == 42;
+}());
+
+// Arrow operator
+static_assert([] {
+    indirect<CxFoo> i;
+    return i->x == 42;
+}());
+
+// valueless_after_move
+static_assert([] {
+    indirect<int> i(42);
+    indirect<int> j(std::move(i));
+    return i.valueless_after_move() && !j.valueless_after_move();
+}());
+
+// Member swap
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(2);
+    a.swap(b);
+    return *a == 2 && *b == 1;
+}());
+
+// Free swap
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(2);
+    swap(a, b);
+    return *a == 2 && *b == 1;
+}());
+
+// Swap with valueless
+static_assert([] {
+    indirect<int> a(42);
+    indirect<int> b(std::move(a)); // a is now valueless
+    indirect<int> c(99);
+    c.swap(a);
+    return c.valueless_after_move() && *a == 99;
+}());
+
+// Equality (indirect vs indirect)
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(1);
+    indirect<int> c(2);
+    return (a == b) && !(a == c);
+}());
+
+// Equality (indirect vs value)
+static_assert([] {
+    indirect<int> a(42);
+    return (a == 42) && !(a == 0);
+}());
+
+    #if BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
+// Three-way comparison
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(2);
+    return (a < b) && (b > a) && (a != b);
+}());
+    #endif
+
+// Copy from valueless yields valueless
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(std::move(a));
+    indirect<int> c(a);
+    return c.valueless_after_move();
+}());
+
+// Move from valueless yields valueless
+static_assert([] {
+    indirect<int> a(1);
+    indirect<int> b(std::move(a));
+    indirect<int> c(std::move(a));
+    return c.valueless_after_move();
+}());
+
+// Move preserves pointer identity
+static_assert([] {
+    indirect<int> a(42);
+    const int*    addr = &*a;
+    indirect<int> b(std::move(a));
+    return &*b == addr;
+}());
+
+// get_allocator type
+static_assert([] {
+    indirect<int> i(42);
+    return std::is_same_v<decltype(i.get_allocator()), std::allocator<int>>;
+}());
+
+// Forwarding assignment
+static_assert([] {
+    indirect<int> i(42);
+    i = 99;
+    return *i == 99;
+}());
+
+// Forwarding assignment to valueless recovers
+static_assert([] {
+    indirect<int> a(42);
+    indirect<int> b(std::move(a));
+    a = 99;
+    return !a.valueless_after_move() && *a == 99;
+}());
+
+#endif // constexpr tests
+
 } // namespace

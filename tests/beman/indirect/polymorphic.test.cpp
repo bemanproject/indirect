@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <beman/indirect/detail/config.hpp>
+
 #include <array>
 #include <map>
 #include <memory>
@@ -690,5 +692,235 @@ TEST(PolymorphicTest, PmrCopy) {
     auto                                       q = p;
     EXPECT_EQ((*q).val(), 42);
 }
+
+// --- PMR allocator propagation into stored object ---
+
+// Uses-allocator-constructible derived type: the allocator should propagate
+// into its internal pmr::vector when polymorphic constructs or clones it.
+struct PmrAwareBase {
+    virtual ~PmrAwareBase()                             = default;
+    virtual std::pmr::memory_resource* resource() const = 0;
+    PmrAwareBase()                                      = default;
+    PmrAwareBase(const PmrAwareBase&)                   = default;
+    PmrAwareBase(PmrAwareBase&&)                        = default;
+    PmrAwareBase& operator=(const PmrAwareBase&)        = default;
+    PmrAwareBase& operator=(PmrAwareBase&&)             = default;
+};
+
+struct PmrAwareDerived : PmrAwareBase {
+    using allocator_type = std::pmr::polymorphic_allocator<std::byte>;
+    std::pmr::vector<int> data_;
+
+    PmrAwareDerived() : data_({1, 2, 3}) {}
+    PmrAwareDerived(const PmrAwareDerived&)            = default;
+    PmrAwareDerived(PmrAwareDerived&&)                 = default;
+    PmrAwareDerived& operator=(const PmrAwareDerived&) = default;
+    PmrAwareDerived& operator=(PmrAwareDerived&&)      = default;
+
+    // Uses-allocator construction forms (allocator_arg)
+    PmrAwareDerived(std::allocator_arg_t, const allocator_type& alloc) : data_({1, 2, 3}, alloc) {}
+    PmrAwareDerived(std::allocator_arg_t, const allocator_type& alloc, const PmrAwareDerived& other)
+        : data_(other.data_, alloc) {}
+    PmrAwareDerived(std::allocator_arg_t, const allocator_type& alloc, PmrAwareDerived&& other)
+        : data_(std::move(other.data_), alloc) {}
+
+    std::pmr::memory_resource* resource() const override { return data_.get_allocator().resource(); }
+};
+
+TEST(PolymorphicTest, PmrPropagatesAllocatorToStoredObject) {
+    std::array<std::byte, 4096>                   buffer{};
+    std::pmr::monotonic_buffer_resource           resource(buffer.data(), buffer.size());
+    std::pmr::polymorphic_allocator<PmrAwareBase> alloc(&resource);
+
+    beman::indirect::pmr::polymorphic<PmrAwareBase> p(std::allocator_arg, alloc, PmrAwareDerived());
+    EXPECT_EQ((*p).resource(), &resource);
+}
+
+TEST(PolymorphicTest, PmrPropagatesAllocatorOnCopy) {
+    std::array<std::byte, 8192>                   buffer{};
+    std::pmr::monotonic_buffer_resource           resource(buffer.data(), buffer.size());
+    std::pmr::polymorphic_allocator<PmrAwareBase> alloc(&resource);
+
+    beman::indirect::pmr::polymorphic<PmrAwareBase> p(std::allocator_arg, alloc, PmrAwareDerived());
+    beman::indirect::pmr::polymorphic<PmrAwareBase> q(std::allocator_arg, alloc, p);
+    EXPECT_EQ((*q).resource(), &resource);
+}
+
+// --- Constexpr tests ---
+// polymorphic is required to support constexpr in C++20+. These static_assert
+// checks verify that key operations are usable in constant-evaluated contexts.
+
+#if __cplusplus >= 202002L && BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR && BEMAN_INDIRECT_USE_CONSTEXPR_VIRTUAL
+
+namespace cx {
+
+struct Base {
+    constexpr virtual ~Base()           = default;
+    constexpr virtual int value() const = 0;
+    Base()                              = default;
+    Base(const Base&)                   = default;
+    Base& operator=(const Base&)        = default;
+};
+
+struct Derived : Base {
+    int x_;
+    constexpr explicit Derived(int x = 0) : x_(x) {}
+    constexpr Derived(const Derived&) = default;
+    constexpr int value() const override { return x_; }
+};
+
+// Non-abstract, for testing default construction.
+struct Concrete {
+    int x_;
+    constexpr explicit Concrete(int x = 0) : x_(x) {}
+    constexpr Concrete(const Concrete&) = default;
+    constexpr virtual ~Concrete()       = default;
+    constexpr virtual int value() const { return x_; }
+};
+
+} // namespace cx
+
+// Default construction
+static_assert([] {
+    polymorphic<cx::Concrete> p;
+    return !p.valueless_after_move() && (*p).value() == 0;
+}());
+
+// In-place type construction (derived)
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 42);
+    return (*p).value() == 42;
+}());
+
+// Construction from derived value
+static_assert([] {
+    polymorphic<cx::Base> p(cx::Derived(7));
+    return (*p).value() == 7;
+}());
+
+// Copy construction preserves value and dynamic type
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 10);
+    polymorphic<cx::Base> q(p);
+    return (*p).value() == 10 && (*q).value() == 10;
+}());
+
+// Move construction leaves source valueless
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 7);
+    polymorphic<cx::Base> q(std::move(p));
+    return p.valueless_after_move() && (*q).value() == 7;
+}());
+
+// Copy assignment
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> q(std::in_place_type<cx::Derived>, 2);
+    q = p;
+    return (*p).value() == 1 && (*q).value() == 1;
+}());
+
+// Move assignment leaves source valueless
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> q(std::in_place_type<cx::Derived>, 2);
+    q = std::move(p);
+    return p.valueless_after_move() && (*q).value() == 1;
+}());
+
+// swap
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> q(std::in_place_type<cx::Derived>, 2);
+    p.swap(q);
+    return (*p).value() == 2 && (*q).value() == 1;
+}());
+
+// Dereference const and non-const
+static_assert([] {
+    const polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 5);
+    return (*p).value() == 5;
+}());
+
+// valueless_after_move
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 3);
+    polymorphic<cx::Base> q(std::move(p));
+    return p.valueless_after_move() && !q.valueless_after_move();
+}());
+
+// Arrow operator (non-const)
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 42);
+    return p->value() == 42;
+}());
+
+// Arrow operator (const)
+static_assert([] {
+    const polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 42);
+    return p->value() == 42;
+}());
+
+// Swap with one valueless
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 42);
+    polymorphic<cx::Base> b(std::move(a)); // a is now valueless
+    polymorphic<cx::Base> c(std::in_place_type<cx::Derived>, 99);
+    c.swap(a);
+    return c.valueless_after_move() && (*a).value() == 99;
+}());
+
+// Swap both valueless
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> b(std::in_place_type<cx::Derived>, 2);
+    polymorphic<cx::Base> c(std::move(a));
+    polymorphic<cx::Base> d(std::move(b));
+    a.swap(b);
+    return a.valueless_after_move() && b.valueless_after_move();
+}());
+
+// Copy from valueless yields valueless
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> b(std::move(a));
+    polymorphic<cx::Base> c(a);
+    return c.valueless_after_move();
+}());
+
+// Copy assign from valueless makes lhs valueless
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> b(std::move(a));
+    polymorphic<cx::Base> c(std::in_place_type<cx::Derived>, 42);
+    c = a;
+    return c.valueless_after_move();
+}());
+
+// Move assign from valueless makes lhs valueless
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 1);
+    polymorphic<cx::Base> b(std::move(a));
+    polymorphic<cx::Base> c(std::in_place_type<cx::Derived>, 42);
+    c = std::move(a);
+    return c.valueless_after_move();
+}());
+
+// Move assign to valueless lhs receives value
+static_assert([] {
+    polymorphic<cx::Base> a(std::in_place_type<cx::Derived>, 42);
+    polymorphic<cx::Base> b(std::in_place_type<cx::Derived>, 0);
+    polymorphic<cx::Base> c(std::move(b)); // b is now valueless
+    b = std::move(a);
+    return !b.valueless_after_move() && (*b).value() == 42;
+}());
+
+// get_allocator type
+static_assert([] {
+    polymorphic<cx::Base> p(std::in_place_type<cx::Derived>, 1);
+    return std::is_same_v<decltype(p.get_allocator()), std::allocator<cx::Base>>;
+}());
+
+#endif // constexpr tests
 
 } // namespace

@@ -29,12 +29,12 @@ template <class T, class Allocator>
 struct control_block {
     T* p_;
 
-    virtual control_block* clone(const Allocator& alloc) const = 0;
-    virtual control_block* move_clone(const Allocator& alloc)  = 0;
-    virtual void           destroy(Allocator& alloc) noexcept  = 0;
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL virtual control_block* clone(const Allocator& alloc) const = 0;
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL virtual control_block* move_clone(const Allocator& alloc)  = 0;
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL virtual void           destroy(Allocator& alloc) noexcept  = 0;
 
   protected:
-    ~control_block() = default;
+    BEMAN_INDIRECT_CONSTEXPR_DTOR ~control_block() = default;
 };
 
 // Concrete control block that stores a value of type U (derived from T) inline.
@@ -45,21 +45,22 @@ struct direct_control_block final : control_block<T, Allocator> {
 
     union storage {
         U value;
-        storage() {}
-        ~storage() {}
+        constexpr storage() {}
+        BEMAN_INDIRECT_CONSTEXPR_DTOR ~storage() {}
     } storage_;
 
     template <class... Args>
-    explicit direct_control_block(Args&&... args) {
-        detail::construct_at_impl(std::addressof(storage_.value), std::forward<Args>(args)...);
+    constexpr explicit direct_control_block(const Allocator& alloc, Args&&... args) {
+        Allocator a(alloc);
+        std::allocator_traits<Allocator>::construct(a, std::addressof(storage_.value), std::forward<Args>(args)...);
         this->p_ = std::addressof(storage_.value);
     }
 
-    control_block<T, Allocator>* clone(const Allocator& alloc) const override {
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL control_block<T, Allocator>* clone(const Allocator& alloc) const override {
         cb_alloc a(alloc);
         auto*    mem = cb_traits::allocate(a, 1);
         try {
-            cb_traits::construct(a, mem, storage_.value);
+            construct_at_impl(mem, alloc, storage_.value);
         } catch (...) {
             cb_traits::deallocate(a, mem, 1);
             throw;
@@ -67,11 +68,11 @@ struct direct_control_block final : control_block<T, Allocator> {
         return mem;
     }
 
-    control_block<T, Allocator>* move_clone(const Allocator& alloc) override {
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL control_block<T, Allocator>* move_clone(const Allocator& alloc) override {
         cb_alloc a(alloc);
         auto*    mem = cb_traits::allocate(a, 1);
         try {
-            cb_traits::construct(a, mem, std::move(storage_.value));
+            construct_at_impl(mem, alloc, std::move(storage_.value));
         } catch (...) {
             cb_traits::deallocate(a, mem, 1);
             throw;
@@ -79,7 +80,7 @@ struct direct_control_block final : control_block<T, Allocator> {
         return mem;
     }
 
-    void destroy(Allocator& alloc) noexcept override {
+    BEMAN_INDIRECT_CONSTEXPR_VIRTUAL void destroy(Allocator& alloc) noexcept override {
         cb_alloc a(alloc);
         std::destroy_at(std::addressof(storage_.value));
         cb_traits::destroy(a, this);
@@ -398,11 +399,11 @@ class polymorphic {
 
   private:
     template <class U, class... Args>
-    static cb_type* make_cb(Allocator& alloc, Args&&... args) {
+    BEMAN_INDIRECT_CONSTEXPR_DTOR static cb_type* make_cb(Allocator& alloc, Args&&... args) {
         cb_alloc<U> a(alloc);
         auto*       mem = cb_traits<U>::allocate(a, 1);
         try {
-            cb_traits<U>::construct(a, mem, std::forward<Args>(args)...);
+            detail::construct_at_impl(mem, alloc, std::forward<Args>(args)...);
         } catch (...) {
             cb_traits<U>::deallocate(a, mem, 1);
             throw;

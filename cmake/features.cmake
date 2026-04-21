@@ -47,6 +47,23 @@ int main() { S s; }
     set(${result_var} ${HAVE_CONSTEXPR_DTOR} PARENT_SCOPE)
 endfunction()
 
+function(beman_indirect_check_constexpr_virtual result_var)
+    check_cxx_source_compiles(
+        "
+struct B {
+    constexpr virtual int f() const = 0;
+    virtual ~B() = default;
+};
+struct D : B {
+    constexpr int f() const override { return 42; }
+};
+int main() {}
+"
+        HAVE_CONSTEXPR_VIRTUAL
+    )
+    set(${result_var} ${HAVE_CONSTEXPR_VIRTUAL} PARENT_SCOPE)
+endfunction()
+
 function(beman_indirect_check_no_unique_address result_var)
     check_cxx_source_compiles(
         "
