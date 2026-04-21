@@ -750,7 +750,7 @@ TEST(PolymorphicTest, PmrPropagatesAllocatorOnCopy) {
 // polymorphic is required to support constexpr in C++20+. These static_assert
 // checks verify that key operations are usable in constant-evaluated contexts.
 
-#if __cplusplus >= 202002L && BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR && BEMAN_INDIRECT_USE_CONSTEXPR_VIRTUAL
+#if __cplusplus >= 202002L && BEMAN_INDIRECT_USE_CONSTEXPR_POLYMORPHIC_EVAL
 
 namespace cx {
 

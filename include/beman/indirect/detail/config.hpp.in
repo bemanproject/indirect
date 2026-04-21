@@ -11,6 +11,7 @@
 #cmakedefine01 BEMAN_INDIRECT_USE_THREE_WAY_COMPARISON
 #cmakedefine01 BEMAN_INDIRECT_USE_CONSTEXPR_DESTRUCTOR
 #cmakedefine01 BEMAN_INDIRECT_USE_CONSTEXPR_VIRTUAL
+#cmakedefine01 BEMAN_INDIRECT_USE_CONSTEXPR_POLYMORPHIC_EVAL
 #cmakedefine01 BEMAN_INDIRECT_USE_NO_UNIQUE_ADDRESS
 
 // ---------------------------------------------------------------------------

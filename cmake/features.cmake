@@ -64,6 +64,35 @@ int main() {}
     set(${result_var} ${HAVE_CONSTEXPR_VIRTUAL} PARENT_SCOPE)
 endfunction()
 
+# End-to-end check: can polymorphic types actually be used in constexpr
+# contexts? GCC 11/12 accept the syntax but fail constexpr evaluation
+# of std::destroy_at on types with virtual destructors.
+function(beman_indirect_check_constexpr_polymorphic_eval result_var)
+    check_cxx_source_compiles(
+        "
+#include <memory>
+struct B {
+    constexpr virtual int f() const = 0;
+    constexpr virtual ~B() = default;
+};
+struct D : B {
+    constexpr int f() const override { return 42; }
+};
+static_assert([] {
+    std::allocator<D> a;
+    D* p = a.allocate(1);
+    std::construct_at(p, D{});
+    std::destroy_at(p);
+    a.deallocate(p, 1);
+    return true;
+}());
+int main() {}
+"
+        HAVE_CONSTEXPR_POLYMORPHIC_EVAL
+    )
+    set(${result_var} ${HAVE_CONSTEXPR_POLYMORPHIC_EVAL} PARENT_SCOPE)
+endfunction()
+
 function(beman_indirect_check_no_unique_address result_var)
     check_cxx_source_compiles(
         "
