@@ -143,6 +143,17 @@ For details on building beman.indirect without using a CMake preset, refer to th
 
 ### Installation
 
+#### Vcpkg
+
+The preferred way to install indirect is via vcpkg. To do so, after installing vcpkg
+itself, you need to add support for the Beman project's [vcpkg
+registry](https://github.com/bemanproject/vcpkg-registry) by configuring a
+`vcpkg-configuration.json` file (which indirect [provides](vcpkg-configuration.json)).
+
+Then, simply run `vcpkg install beman-indirect`.
+
+#### Manual
+
 To install beman.indirect globally after building with the `gcc-release` preset, you can
 run:
 
