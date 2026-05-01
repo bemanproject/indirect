@@ -17,5 +17,5 @@ target_link_libraries(
 )
 
 include(GoogleTest)
-gtest_discover_tests(beman.indirect.tests.indirect)
-gtest_discover_tests(beman.indirect.tests.polymorphic)
+gtest_discover_tests(beman.indirect.tests.indirect DISCOVERY_TIMEOUT 60)
+gtest_discover_tests(beman.indirect.tests.polymorphic DISCOVERY_TIMEOUT 60)

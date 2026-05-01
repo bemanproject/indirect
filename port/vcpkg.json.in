@@ -1,0 +1,17 @@
+{
+  "name": "beman-indirect",
+  "version-semver": "@VERSION@",
+  "description": "Vocabulary types for composite class design",
+  "homepage": "https://github.com/bemanproject/indirect",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
