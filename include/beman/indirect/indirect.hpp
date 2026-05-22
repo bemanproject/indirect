@@ -55,11 +55,11 @@ class indirect {
 #if BEMAN_INDIRECT_USE_CONCEPTS
     constexpr explicit indirect()
         requires std::is_default_constructible_v<Allocator>
-    {
 #else
     template <class Alloc_ = Allocator, std::enable_if_t<std::is_default_constructible_v<Alloc_>, int> = 0>
-    constexpr explicit indirect() {
+    constexpr explicit indirect()
 #endif
+    {
         static_assert(std::is_default_constructible_v<T>);
         p_ = construct_from(alloc_);
     }
@@ -114,15 +114,14 @@ class indirect {
         requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
                  !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U> &&
                  std::is_default_constructible_v<Allocator>)
-    constexpr explicit indirect(U&& u) {
 #else
     template <class U               = T,
               std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
                                    !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> &&
                                    std::is_constructible_v<T, U> && std::is_default_constructible_v<Allocator>,
                                int> = 0>
-    constexpr explicit indirect(U&& u) {
 #endif
+    constexpr explicit indirect(U&& u) {
         p_ = construct_from(alloc_, std::forward<U>(u));
     }
 
@@ -130,39 +129,36 @@ class indirect {
     template <class U = T>
         requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
                  !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> && std::is_constructible_v<T, U>)
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
 #else
     template <class U               = T,
               std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> &&
                                    !std::is_same_v<detail::remove_cvref_t<U>, std::in_place_t> &&
                                    std::is_constructible_v<T, U>,
                                int> = 0>
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
 #endif
+    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
         p_ = construct_from(alloc_, std::forward<U>(u));
     }
 
 #if BEMAN_INDIRECT_USE_CONCEPTS
     template <class... Us>
         requires(std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>)
-    constexpr explicit indirect(std::in_place_t, Us&&... us) {
 #else
     template <
         class... Us,
         std::enable_if_t<std::is_constructible_v<T, Us...> && std::is_default_constructible_v<Allocator>, int> = 0>
-    constexpr explicit indirect(std::in_place_t, Us&&... us) {
 #endif
+    constexpr explicit indirect(std::in_place_t, Us&&... us) {
         p_ = construct_from(alloc_, std::forward<Us>(us)...);
     }
 
 #if BEMAN_INDIRECT_USE_CONCEPTS
     template <class... Us>
-        requires(std::is_constructible_v<T, Us...>)
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
+        requires std::is_constructible_v<T, Us...>
 #else
     template <class... Us, std::enable_if_t<std::is_constructible_v<T, Us...>, int> = 0>
-    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
 #endif
+    constexpr explicit indirect(std::allocator_arg_t, const Allocator& a, std::in_place_t, Us&&... us) : alloc_(a) {
         p_ = construct_from(alloc_, std::forward<Us>(us)...);
     }
 
@@ -170,32 +166,28 @@ class indirect {
     template <class I, class... Us>
         requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
                  std::is_default_constructible_v<Allocator>)
-    constexpr explicit indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
 #else
     template <class I,
               class... Us,
               std::enable_if_t<std::is_constructible_v<T, std::initializer_list<I>&, Us...> &&
                                    std::is_default_constructible_v<Allocator>,
                                int> = 0>
-    constexpr explicit indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
 #endif
+    constexpr explicit indirect(std::in_place_t, std::initializer_list<I> ilist, Us&&... us) {
         p_ = construct_from(alloc_, ilist, std::forward<Us>(us)...);
     }
 
 #if BEMAN_INDIRECT_USE_CONCEPTS
     template <class I, class... Us>
-        requires(std::is_constructible_v<T, std::initializer_list<I>&, Us...>)
-    constexpr explicit indirect(
-        std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
-        : alloc_(a) {
+        requires std::is_constructible_v<T, std::initializer_list<I>&, Us...>
 #else
     template <class I,
               class... Us,
               std::enable_if_t<std::is_constructible_v<T, std::initializer_list<I>&, Us...>, int> = 0>
+#endif
     constexpr explicit indirect(
         std::allocator_arg_t, const Allocator& a, std::in_place_t, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
-#endif
         p_ = construct_from(alloc_, ilist, std::forward<Us>(us)...);
     }
 
@@ -269,14 +261,13 @@ class indirect {
     template <class U = T>
         requires(!std::is_same_v<detail::remove_cvref_t<U>, indirect> && std::is_constructible_v<T, U> &&
                  std::is_assignable_v<T&, U>)
-    constexpr indirect& operator=(U&& u) {
 #else
     template <class U               = T,
               std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, indirect> && std::is_constructible_v<T, U> &&
                                    std::is_assignable_v<T&, U>,
                                int> = 0>
-    constexpr indirect& operator=(U&& u) {
 #endif
+    constexpr indirect& operator=(U&& u) {
         if (valueless_after_move()) {
             p_ = construct_from(alloc_, std::forward<U>(u));
         } else {
