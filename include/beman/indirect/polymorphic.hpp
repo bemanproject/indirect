@@ -123,11 +123,11 @@ class polymorphic {
 #if BEMAN_INDIRECT_USE_CONCEPTS
     constexpr explicit polymorphic()
         requires std::is_default_constructible_v<Allocator>
-    {
 #else
     template <class Alloc_ = Allocator, std::enable_if_t<std::is_default_constructible_v<Alloc_>, int> = 0>
-    constexpr explicit polymorphic() {
+    constexpr explicit polymorphic()
 #endif
+    {
         static_assert(std::is_default_constructible_v<T>);
         static_assert(std::is_copy_constructible_v<T>);
         cb_ = make_cb<T>(alloc_);
@@ -183,7 +183,6 @@ class polymorphic {
                  std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
                  std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
                  !detail::is_in_place_type_v<detail::remove_cvref_t<U>> && std::is_default_constructible_v<Allocator>)
-    constexpr explicit polymorphic(U&& u) {
 #else
     template <class U               = T,
               std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
@@ -193,8 +192,8 @@ class polymorphic {
                                    !detail::is_in_place_type_v<detail::remove_cvref_t<U>> &&
                                    std::is_default_constructible_v<Allocator>,
                                int> = 0>
-    constexpr explicit polymorphic(U&& u) {
 #endif
+    constexpr explicit polymorphic(U&& u) {
         cb_ = make_cb<detail::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
     }
 
@@ -205,7 +204,6 @@ class polymorphic {
                  std::is_constructible_v<detail::remove_cvref_t<U>, U> &&
                  std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
                  !detail::is_in_place_type_v<detail::remove_cvref_t<U>>)
-    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
 #else
     template <class U               = T,
               std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<U>, polymorphic> &&
@@ -214,8 +212,8 @@ class polymorphic {
                                    std::is_copy_constructible_v<detail::remove_cvref_t<U>> &&
                                    !detail::is_in_place_type_v<detail::remove_cvref_t<U>>,
                                int> = 0>
-    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
 #endif
+    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, U&& u) : alloc_(a) {
         cb_ = make_cb<detail::remove_cvref_t<U>>(alloc_, std::forward<U>(u));
     }
 
@@ -224,7 +222,6 @@ class polymorphic {
         requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U> &&
                  std::is_default_constructible_v<Allocator>)
-    constexpr explicit polymorphic(std::in_place_type_t<U>, Ts&&... ts) {
 #else
     template <class U,
               class... Ts,
@@ -232,8 +229,8 @@ class polymorphic {
                                    std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U> &&
                                    std::is_default_constructible_v<Allocator>,
                                int> = 0>
-    constexpr explicit polymorphic(std::in_place_type_t<U>, Ts&&... ts) {
 #endif
+    constexpr explicit polymorphic(std::in_place_type_t<U>, Ts&&... ts) {
         cb_ = make_cb<U>(alloc_, std::forward<Ts>(ts)...);
     }
 
@@ -241,17 +238,15 @@ class polymorphic {
     template <class U, class... Ts>
         requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U>)
-    constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, Ts&&... ts)
-        : alloc_(a) {
 #else
     template <class U,
               class... Ts,
               std::enable_if_t<std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                                    std::is_constructible_v<U, Ts...> && std::is_copy_constructible_v<U>,
                                int> = 0>
+#endif
     constexpr explicit polymorphic(std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, Ts&&... ts)
         : alloc_(a) {
-#endif
         cb_ = make_cb<U>(alloc_, std::forward<Ts>(ts)...);
     }
 
@@ -260,7 +255,6 @@ class polymorphic {
         requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U> &&
                  std::is_default_constructible_v<Allocator>)
-    constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
 #else
     template <class U,
               class I,
@@ -269,8 +263,8 @@ class polymorphic {
                                    std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
                                    std::is_copy_constructible_v<U> && std::is_default_constructible_v<Allocator>,
                                int> = 0>
-    constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
 #endif
+    constexpr explicit polymorphic(std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us) {
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
 
@@ -278,9 +272,6 @@ class polymorphic {
     template <class U, class I, class... Us>
         requires(std::is_same_v<detail::remove_cvref_t<U>, U> && detail::derived_from_v<U, T> &&
                  std::is_constructible_v<U, std::initializer_list<I>&, Us...> && std::is_copy_constructible_v<U>)
-    constexpr explicit polymorphic(
-        std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us)
-        : alloc_(a) {
 #else
     template <class U,
               class I,
@@ -289,10 +280,10 @@ class polymorphic {
                                    std::is_constructible_v<U, std::initializer_list<I>&, Us...> &&
                                    std::is_copy_constructible_v<U>,
                                int> = 0>
+#endif
     constexpr explicit polymorphic(
         std::allocator_arg_t, const Allocator& a, std::in_place_type_t<U>, std::initializer_list<I> ilist, Us&&... us)
         : alloc_(a) {
-#endif
         cb_ = make_cb<U>(alloc_, ilist, std::forward<Us>(us)...);
     }
 
