@@ -4,8 +4,14 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-<!-- markdownlint-disable-next-line line-length -->
-![Library Status](https://raw.githubusercontent.com/bemanproject/beman/refs/heads/main/images/badges/beman_badge-beman_library_under_development.svg) ![Continuous Integration Tests](https://github.com/bemanproject/indirect/actions/workflows/ci_tests.yml/badge.svg) ![Lint Check (pre-commit)](https://github.com/bemanproject/indirect/actions/workflows/pre-commit-check.yml/badge.svg) [![Coverage](https://coveralls.io/repos/github/bemanproject/indirect/badge.svg?branch=main)](https://coveralls.io/github/bemanproject/indirect?branch=main) ![Standard Target](https://github.com/bemanproject/beman/blob/main/images/badges/cpp29.svg) [![Compiler Explorer Example](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://www.example.com)
+<!-- markdownlint-disable line-length -->
+[![Library Status](https://raw.githubusercontent.com/bemanproject/beman/refs/heads/main/images/badges/beman_badge-beman_library_under_development.svg)](https://github.com/bemanproject/beman/blob/main/docs/beman_library_maturity_model.md#the-beman-library-maturity-model)
+[![Continuous Integration Tests](https://github.com/bemanproject/indirect/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/bemanproject/indirect/actions/workflows/ci_tests.yml)
+[![Lint Check (pre-commit)](https://github.com/bemanproject/indirect/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/bemanproject/indirect/actions/workflows/pre-commit-check.yml)
+[![Coverage](https://coveralls.io/repos/github/bemanproject/indirect/badge.svg?branch=main)](https://coveralls.io/github/bemanproject/indirect?branch=main)
+![Standard Target](https://github.com/bemanproject/beman/blob/main/images/badges/cpp29.svg)
+[![Compiler Explorer Example](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://www.example.com)
+<!-- markdownlint-restore -->
 
 `beman.indirect` implements `std::indirect` and `std::polymorphic`, vocabulary types for
 composite class design. These types provide value semantics for owned heap-allocated objects:
@@ -211,9 +217,3 @@ include an appropriate `beman.indirect` header from your source code.
 ```c++
 #include <beman/indirect/indirect.hpp>
 ```
-
-> [!NOTE]
->
-> `beman.indirect` headers are to be included with the `beman/indirect/` prefix.
-> Altering include search paths to spell the include target another way (e.g.
-> `#include <indirect.hpp>`) is unsupported.
