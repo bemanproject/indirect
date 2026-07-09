@@ -40,11 +40,12 @@ repos:
     hooks:
       - id: codespell
 
-    # Beman Standard checking via beman-tidy
+  # Beman Standard checking via beman-tidy
   - repo: https://github.com/bemanproject/beman-tidy
     rev: v0.5.1
     hooks:
-    - id: beman-tidy
+      - id: beman-tidy
+        args: [".", "--verbose"]
 
 
 exclude: 'cookiecutter/|infra/|port/'

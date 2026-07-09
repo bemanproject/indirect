@@ -7,4 +7,4 @@
 disabled_rules:
     # None
 ignored_paths:
-    # None
+    - infra/
